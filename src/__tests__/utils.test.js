@@ -65,7 +65,7 @@ describe('safeSetItem', () => {
 
   it('prunes kw_txns and retries when QuotaExceededError is thrown', () => {
     // Fill kw_txns with 300 fake transactions
-    const txns = Array.from({ length: 300 }, (_, i) => ({ id: `${i}`, no: i }));
+    const txns = Array.from({ length: 300 }, (_, i) => ({ id: String(i), no: i, _synced: true }));
     localStorage.setItem('kw_txns', JSON.stringify(txns));
 
     // Mock localStorage.setItem to throw QuotaExceededError on first call
