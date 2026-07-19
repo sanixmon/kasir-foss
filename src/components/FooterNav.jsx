@@ -1,6 +1,6 @@
 import React from 'react';
 
-function FooterNav({ activeTab, onTabChange, activeCount }) {
+function FooterNav({ activeTab, onTabChange, activeCount, currentUserRole }) {
   return (
     <nav className="footer-nav">
       <button 
@@ -24,15 +24,17 @@ function FooterNav({ activeTab, onTabChange, activeCount }) {
         <span className="fnav-label">Riwayat</span>
       </button>
 
-      <button 
-        className={`fnav-btn ${activeTab === 'pengaturan' ? 'active' : ''}`} 
-        onClick={() => onTabChange('pengaturan')}
-      >
-        <div className="fnav-ico-wrap">
-          <i className="bi bi-gear-fill"></i>
-        </div>
-        <span className="fnav-label">Pengaturan</span>
-      </button>
+      {currentUserRole !== 'cashier' && (
+        <button 
+          className={`fnav-btn ${activeTab === 'pengaturan' ? 'active' : ''}`} 
+          onClick={() => onTabChange('pengaturan')}
+        >
+          <div className="fnav-ico-wrap">
+            <i className="bi bi-gear-fill"></i>
+          </div>
+          <span className="fnav-label">Pengaturan</span>
+        </button>
+      )}
     </nav>
   );
 }

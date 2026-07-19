@@ -1083,6 +1083,7 @@ function App() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         activeCount={activeSessions.length}
+        currentUserRole={currentUserRole}
       />
 
       {activeCheckoutSession && (

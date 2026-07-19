@@ -32,7 +32,7 @@ export default function RoleSelection({ onSelectCashier, onSelectAdmin }) {
               autoFocus
             />
             <div className="d-flex gap-2">
-              <button className="btn btn-secondary w-50" onClick={() => setShowAdminLogin(false)}>Kembali</button>
+              <button className="btn btn-secondary w-50" onClick={() => { setShowAdminLogin(false); setPassword(''); }}>Kembali</button>
               <button className="btn btn-primary w-50" onClick={() => onSelectAdmin(password)}>Masuk</button>
             </div>
           </div>
