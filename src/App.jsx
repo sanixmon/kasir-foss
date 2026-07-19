@@ -7,6 +7,7 @@ import DashboardTab from './components/DashboardTab';
 import HistoryTab from './components/HistoryTab';
 import SettingsTab from './components/SettingsTab';
 import FooterNav from './components/FooterNav';
+import RoleSelection from './components/RoleSelection';
 
 import CalculateRentalModal from './components/CalculateRentalModal';
 import PaymentModal from './components/PaymentModal';
@@ -66,6 +67,7 @@ function App() {
   const [adminPassword, setAdminPassword] = useState('admin');
   const [shiftQueueNo, setShiftQueueNo] = useState(0);
   const [currentShiftUser, setCurrentShiftUser] = useState(null);
+  const [currentUserRole, setCurrentUserRole] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [theme, setTheme] = useState('dark');
   const [sbConnected, setSbConnected] = useState(false);
@@ -99,11 +101,13 @@ function App() {
   };
 
   const handleLogout = () => {
-    if (window.confirm(`Akhiri shift sebagai ${currentShiftUser}?`)) {
+    if (window.confirm(`Akhiri sesi / shift saat ini?`)) {
       localStorage.removeItem('kw_currentUser');
       localStorage.removeItem('kw_shiftQNo');
+      localStorage.removeItem('kw_userRole');
       setShiftQueueNo(0);
       setCurrentShiftUser(null);
+      setCurrentUserRole(null);
     }
   };
 
@@ -130,6 +134,8 @@ function App() {
     // Check saved user
     const savedUser = localStorage.getItem('kw_currentUser');
     if (savedUser) setCurrentShiftUser(savedUser);
+    const savedRole = localStorage.getItem('kw_userRole');
+    if (savedRole) setCurrentUserRole(savedRole);
 
     // Check hash route
     const checkHash = () => {
@@ -948,8 +954,32 @@ function App() {
     }
   };
 
-  if (!currentShiftUser) {
-    return <LoginPage onLogin={handleLogin} />;
+  if (!currentUserRole) {
+    return (
+      <RoleSelection 
+        onSelectCashier={() => {
+          setCurrentUserRole('cashier');
+          localStorage.setItem('kw_userRole', 'cashier');
+        }}
+        onSelectAdmin={(pwd) => {
+          if (pwd === adminPassword) {
+            setCurrentUserRole('admin');
+            localStorage.setItem('kw_userRole', 'admin');
+          } else {
+            alert('Password salah!');
+          }
+        }}
+      />
+    );
+  }
+
+  if (currentUserRole === 'cashier' && !currentShiftUser) {
+    return (
+      <div>
+        <div className="p-2"><button className="btn btn-sm btn-outline-secondary" onClick={() => { setCurrentUserRole(null); localStorage.removeItem('kw_userRole'); }}>&larr; Ganti Role</button></div>
+        <LoginPage onLogin={handleLogin} />
+      </div>
+    );
   }
 
   return (
@@ -1022,7 +1052,13 @@ function App() {
             }}
           />
         )}
-        {activeTab === 'pengaturan' && (
+        {activeTab === 'pengaturan' && currentUserRole === 'cashier' && (
+          <div className="text-center mt-5">
+            <h4>Akses Ditolak</h4>
+            <p>Hanya Admin yang dapat mengakses Pengaturan.</p>
+          </div>
+        )}
+        {activeTab === 'pengaturan' && currentUserRole === 'admin' && (
           <SettingsTab
             theme={theme}
             onThemeChange={handleThemeChange}
