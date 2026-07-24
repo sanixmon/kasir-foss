@@ -18,7 +18,7 @@ function LiveClock() {
   }, []);
 
   return (
-    <div className="clock-box ms-auto d-flex flex-column align-items-end justify-content-center px-3" style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '12px' }}>
+    <div className="text-end">
       <div className="clock-time">{time}</div>
       <div className="clock-date d-none d-sm-block">{date}</div>
     </div>
