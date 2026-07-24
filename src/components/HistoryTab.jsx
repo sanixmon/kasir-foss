@@ -24,6 +24,7 @@ const timeStr = ts => new Date(ts).toTimeString().slice(0,5);
 function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
   const getLocalDateString = () => {
     const d = new Date();
+    d.setHours(d.getHours() - 6); // Shift rollover at 6 AM
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
   const [filterMode, setFilterMode] = useState('daily');

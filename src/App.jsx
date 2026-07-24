@@ -15,6 +15,7 @@ import PasswordVerificationModal from './components/PasswordVerificationModal';
 import QRCodeModal from './components/QRCodeModal';
 import EditActiveSessionModal from './components/EditActiveSessionModal';
 import TrackingPage from './components/TrackingPage';
+import LiveClock from './components/LiveClock';
 
 export const ITEMS = [
   { code:'ST',  name:'Stroller',          emoji:'🛺', defaultImg:'https://i.ibb.co.com/fzwMy2XL/The-Edit-The-stroller-changing-the-game-banner-desktop.webp', priceHour:20000, priceOT30:10000, priceOT60:20000 },
@@ -74,8 +75,6 @@ function App() {
   const [realtimeStatus, setRealtimeStatus] = useState('CONNECTING');
   const [isTrackingMode, setIsTrackingMode] = useState(false);
   const [trackingId, setTrackingId] = useState('');
-  const [liveTime, setLiveTime] = useState('00:00:00');
-  const [liveDate, setLiveDate] = useState('—');
 
   // Modals Visibility
   const [activeCheckoutSession, setActiveCheckoutSession] = useState(null);
@@ -151,36 +150,26 @@ function App() {
     checkHash();
     window.addEventListener('hashchange', checkHash);
 
-    // Start clock
-    const tick = () => {
+    // Check shift expiration on mount
+    const savedUserForShift = localStorage.getItem('kw_currentUser');
+    if (savedUserForShift) {
       const now = new Date();
-      setLiveTime(now.toTimeString().slice(0, 8));
-      const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-      const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
-      setLiveDate(`${days[now.getDay()]} , ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`);
-
-      const savedUser = localStorage.getItem('kw_currentUser');
-      if (savedUser) {
-        let shiftDate = localStorage.getItem('kw_shiftDate');
-        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        
-        if (!shiftDate) {
-          shiftDate = today;
-          localStorage.setItem('kw_shiftDate', shiftDate);
-        }
-
-        if (checkShiftExpiration(shiftDate, today)) {
-          localStorage.removeItem('kw_currentUser');
-          localStorage.removeItem('kw_shiftDate');
-          localStorage.removeItem('kw_shiftQNo');
-          setShiftQueueNo(0);
-          setCurrentShiftUser(null);
-        }
+      let shiftDate = localStorage.getItem('kw_shiftDate');
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      
+      if (!shiftDate) {
+        shiftDate = today;
+        localStorage.setItem('kw_shiftDate', shiftDate);
       }
 
-    };
-    tick();
-    const interval = setInterval(tick, 1000);
+      if (checkShiftExpiration(shiftDate, today)) {
+        localStorage.removeItem('kw_currentUser');
+        localStorage.removeItem('kw_shiftDate');
+        localStorage.removeItem('kw_shiftQNo');
+        setShiftQueueNo(0);
+        setCurrentShiftUser(null);
+      }
+    }
 
     // Supabase Auto-Connect
     const testConnection = async () => {
@@ -361,7 +350,6 @@ function App() {
 
     return () => {
       window.removeEventListener('hashchange', checkHash);
-      clearInterval(interval);
       sb.removeChannel(sub);
     };
   }, []);
@@ -394,11 +382,11 @@ function App() {
           _synced: true
         }));
 
-        // Merge offline-only transactions
-        const finalTxns = mergeSyncData(ct, transactions).sort((a, b) => (a.no || 0) - (b.no || 0));
-
-        setTransactions(finalTxns);
-        safeSetItem('kw_txns', JSON.stringify(finalTxns));
+        setTransactions(prev => {
+          const finalTxns = mergeSyncData(ct, prev).sort((a, b) => (a.no || 0) - (b.no || 0));
+          safeSetItem('kw_txns', JSON.stringify(finalTxns));
+          return finalTxns;
+        });
       }
 
       // Pull active sessions
@@ -418,10 +406,11 @@ function App() {
 
         // Merge offline-only active sessions
         const currentTxns = JSON.parse(localStorage.getItem('kw_txns') || '[]');
-        const finalSessions = mergeSyncData(cs, activeSessions, (s) => !currentTxns.some(t => t.id === s.id));
-
-        setActiveSessions(finalSessions);
-        safeSetItem('kw_sessions', JSON.stringify(finalSessions));
+        setActiveSessions(prev => {
+          const finalSessions = mergeSyncData(cs, prev, (s) => !currentTxns.some(t => t.id === s.id));
+          safeSetItem('kw_sessions', JSON.stringify(finalSessions));
+          return finalSessions;
+        });
       }
 
       // Pull settings
@@ -703,9 +692,11 @@ function App() {
       queueNo: newQueueNo
     };
 
-    const updated = [...activeSessions, session];
-    setActiveSessions(updated);
-    safeSetItem('kw_sessions', JSON.stringify(updated));
+    setActiveSessions(prev => {
+      const updated = [...prev, session];
+      safeSetItem('kw_sessions', JSON.stringify(updated));
+      return updated;
+    });
 
     if (printMulai) {
       handlePrintMulai(session);
@@ -745,9 +736,11 @@ function App() {
     } else if (pendingAction.type === 'deleteTxn') {
       if (window.confirm('Hapus transaksi ini?')) {
         const id = pendingAction.id;
-        const updated = transactions.filter(t => t.id !== id);
-        setTransactions(updated);
-        safeSetItem('kw_txns', JSON.stringify(updated));
+        setTransactions(prev => {
+          const updated = prev.filter(t => t.id !== id);
+          safeSetItem('kw_txns', JSON.stringify(updated));
+          return updated;
+        });
         
         if (sbConnected) {
           sb.from('transactions').delete().eq('id', id).then(() => {
@@ -760,9 +753,11 @@ function App() {
   };
 
   const handleSaveEditedSession = (updatedSession) => {
-    const updatedSessions = activeSessions.map(s => s.id === updatedSession.id ? updatedSession : s);
-    setActiveSessions(updatedSessions);
-    safeSetItem('kw_sessions', JSON.stringify(updatedSessions));
+    setActiveSessions(prev => {
+      const updatedSessions = prev.map(s => s.id === updatedSession.id ? updatedSession : s);
+      safeSetItem('kw_sessions', JSON.stringify(updatedSessions));
+      return updatedSessions;
+    });
 
     if (sbConnected) {
       sb.from('active_sessions')
@@ -856,19 +851,23 @@ function App() {
       shift: currentShiftUser || '-'
     };
 
-    // Update local state
-    const newTxns = [...transactions, txn];
-    setTransactions(newTxns);
-    safeSetItem('kw_txns', JSON.stringify(newTxns));
+    // Update local state (use functional updates to prevent stale closure data loss)
+    setTransactions(prev => {
+      const newTxns = [...prev, txn];
+      safeSetItem('kw_txns', JSON.stringify(newTxns));
+      return newTxns;
+    });
 
-    let newSessions;
-    if (remainingItems.length > 0) {
-      newSessions = activeSessions.map(s => s.id === session.id ? { ...s, items: remainingItems } : s);
-    } else {
-      newSessions = activeSessions.filter(s => s.id !== session.id);
-    }
-    setActiveSessions(newSessions);
-    safeSetItem('kw_sessions', JSON.stringify(newSessions));
+    setActiveSessions(prev => {
+      let newSessions;
+      if (remainingItems.length > 0) {
+        newSessions = prev.map(s => s.id === session.id ? { ...s, items: remainingItems } : s);
+      } else {
+        newSessions = prev.filter(s => s.id !== session.id);
+      }
+      safeSetItem('kw_sessions', JSON.stringify(newSessions));
+      return newSessions;
+    });
 
     if (printSelesai) {
       handlePrintSelesai(txn);
@@ -910,6 +909,7 @@ function App() {
 
   const todayStr = () => {
     const d = new Date();
+    d.setHours(d.getHours() - 6); // Shift rollover at 6 AM
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
 
@@ -1021,10 +1021,7 @@ function App() {
                   {realtimeStatus === 'SUBSCRIBED' ? 'LIVE' : realtimeStatus === 'CONNECTING' ? 'SYNC…' : 'OFFLINE'}
                 </span>
               </div>
-              <div className="text-end">
-                <div className="clock-time">{liveTime}</div>
-                <div className="clock-date d-none d-sm-block">{liveDate}</div>
-              </div>
+              <LiveClock />
             </div>
           </div>
         </div>
