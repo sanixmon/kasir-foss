@@ -36,4 +36,19 @@ describe('aggregateHistory', () => {
     expect(res.totalPokok).toBe(110000); // 10+20+30+50
     expect(res.grandTotal).toBe(125000);
   });
+
+  it('sorts transactions by bill close time (endTime) descending by default and ascending when specified', () => {
+    const timedTxns = [
+      { id: 't1', tanggal: '2026-07-25', endTime: 1000, totalBase: 5000 },
+      { id: 't2', tanggal: '2026-07-25', endTime: 3000, totalBase: 5000 },
+      { id: 't3', tanggal: '2026-07-25', endTime: 2000, totalBase: 5000 }
+    ];
+
+    const resDesc = aggregateHistory(timedTxns, 'daily', '2026-07-25', 'desc');
+    expect(resDesc.filtered.map(t => t.id)).toEqual(['t2', 't3', 't1']);
+
+    const resAsc = aggregateHistory(timedTxns, 'daily', '2026-07-25', 'asc');
+    expect(resAsc.filtered.map(t => t.id)).toEqual(['t1', 't3', 't2']);
+  });
 });
+

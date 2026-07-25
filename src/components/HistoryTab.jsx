@@ -31,6 +31,7 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
   const [filterDate, setFilterDate] = useState(getLocalDateString());
   const [filterMonth, setFilterMonth] = useState(getLocalDateString().slice(0, 7));
   const [filterYear, setFilterYear] = useState(getLocalDateString().slice(0, 4));
+  const [sortOrder, setSortOrder] = useState('desc'); // Urutkan berdasarkan waktu close bill
 
   const filterValue = filterMode === 'daily' ? filterDate : filterMode === 'monthly' ? filterMonth : filterYear;
 
@@ -38,7 +39,7 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
     filtered, totalPokok, totalPokokCash, totalPokokQris, 
     totalTambahan, totalOTCash, totalOTQris, 
     totalCashAll, totalQrisAll, grandTotal
-  } = aggregateHistory(transactions, filterMode, filterValue);
+  } = aggregateHistory(transactions, filterMode, filterValue, sortOrder);
 
   const handleExport = () => {
     if (filtered.length === 0) { 
@@ -83,7 +84,21 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
             {filterMode === 'daily' && <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="cfield-sm" />}
             {filterMode === 'monthly' && <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="cfield-sm" />}
             {filterMode === 'yearly' && <input type="number" min="2024" max="2099" value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="cfield-sm" style={{width:'80px'}} />}
-            <button className="btn-export" onClick={handleExport}><i className="bi bi-download me-1"></i>Export</button>
+            
+            <div className="d-flex align-items-center gap-1 ms-2">
+              <i className="bi bi-sort-down-alt clr-cyan" title="Urutkan menurut waktu close bill" style={{ fontSize: '1.1rem' }}></i>
+              <select 
+                className="cfield-sm" 
+                value={sortOrder} 
+                onChange={e => setSortOrder(e.target.value)}
+                aria-label="Urutkan Waktu Close Bill"
+              >
+                <option value="desc">Close: Terbaru (Desc)</option>
+                <option value="asc">Close: Terlama (Asc)</option>
+              </select>
+            </div>
+
+            <button className="btn-export ms-1" onClick={handleExport}><i className="bi bi-download me-1"></i>Export</button>
           </div>
         </div>
         <div className="panel-body">
@@ -118,7 +133,7 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
             <table className="ctable">
               <thead>
                 <tr>
-                  <th>No</th><th>Nama</th><th>Shift</th><th>Tgl</th><th>Waktu</th>
+                  <th>No</th><th>Nama</th><th>Shift</th><th>Tgl</th><th style={{ whiteSpace: 'nowrap' }}>Waktu (Close)</th>
                   <th>Item</th><th>Tambahan</th><th>Dur OT</th>
                   <th className="th-pokok-cash"><i className="bi bi-cash-stack me-1"></i>Pokok (C)</th>
                   <th className="th-pokok-qris"><i className="bi bi-qr-code-scan me-1"></i>Pokok (QR)</th>
@@ -145,7 +160,9 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
                         <td><strong>{t.nama}</strong></td>
                         <td><span className="badge-shift">{shiftCode(t.shift)}</span></td>
                         <td>{dateStr(t.startTime)}</td>
-                        <td style={{ whiteSpace: 'nowrap', fontSize: '0.78rem' }}>{timeStr(t.startTime)} - {timeStr(t.endTime)}</td>
+                        <td style={{ whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
+                          <span>{timeStr(t.startTime)}</span> <i className="bi bi-arrow-right text-secondary mx-1"></i> <strong className="clr-cyan" title="Waktu Close Bill">{timeStr(t.endTime)}</strong>
+                        </td>
                         <td style={{ fontSize: '0.78rem' }}>{t.items}</td>
                         <td style={{ fontSize: '0.78rem' }}>{t.ot || '-'}</td>
                         <td style={{ fontSize: '0.75rem', color: 'var(--orange)' }}>{t.otDur || '-'}</td>

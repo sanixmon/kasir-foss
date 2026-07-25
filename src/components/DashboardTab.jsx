@@ -96,17 +96,27 @@ function DashboardTab({ activeSessions, onStartSewa, getImgUrl, onSelesaiSewa, o
                   const priceLabel = item.isPackage ? `Paket ${item.packageHours}jam ${fmtRp(item.priceHour)}` : `${fmtRp(item.priceHour)}/jam`;
                   return (
                     <div className="col" key={item.code}>
-                      <div className={`item-card ${qty > 0 ? 'selected' : ''}`}>
-                        <div className="item-img-box">
+                      <div className={`item-card ${qty > 0 ? 'selected' : ''}`} onClick={(e) => {
+                        // Prevent increment if clicked directly on quantity controls
+                        if (!e.target.closest('.qty-control')) {
+                          changeQty(item.code, 1);
+                        }
+                      }}>
+                        <div className="item-img-box position-relative">
                           <img src={img} alt={item.name} onError={(e) => { e.target.parentElement.innerHTML = `<div style="font-size:2rem">${item.emoji}</div>` }} />
+                          {qty > 0 && (
+                            <div className="position-absolute top-0 end-0 m-2 bg-success text-white rounded-circle d-flex align-items-center justify-content-center" style={{ width: '26px', height: '26px', boxShadow: '0 2px 8px rgba(0,0,0,0.5)', border: '2px solid white' }}>
+                              <i className="bi bi-check-lg" style={{ fontSize: '0.9rem', fontWeight: '900' }}></i>
+                            </div>
+                          )}
                         </div>
                         <div className="item-code">{item.code}</div>
                         <div className="item-name">{item.name}</div>
                         <div className="item-price">{priceLabel}</div>
-                        <div className="qty-control">
-                          <button className="qty-btn minus" onClick={() => changeQty(item.code, -1)}>−</button>
+                        <div className="qty-control" onClick={(e) => e.stopPropagation()}>
+                          <button type="button" className="qty-btn minus" onClick={() => changeQty(item.code, -1)}>━</button>
                           <span className="qty-val">{qty}</span>
-                          <button className="qty-btn" onClick={() => changeQty(item.code, 1)}>+</button>
+                          <button type="button" className="qty-btn plus" onClick={() => changeQty(item.code, 1)}>✚</button>
                         </div>
                       </div>
                     </div>

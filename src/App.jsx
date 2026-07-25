@@ -992,25 +992,38 @@ function App() {
               <div className="brand-sub">Scooter &amp; Stroller</div>
             </div>
             <div className="d-flex align-items-center gap-2 gap-md-3">
-              <div className="shift-indicator d-flex" onClick={handleLogout}>
-                <i className="bi bi-person-fill" style={{ color: 'var(--green)', fontSize: '1.1rem' }}></i>
-                <span>{currentShiftUser}</span>
-                <i className="bi bi-box-arrow-right ms-1" style={{ fontSize: '.75rem', opacity: .6 }}></i>
+              
+              {/* Profile Dropdown */}
+              <div className="dropdown">
+                <div 
+                  className="shift-indicator d-flex align-items-center dropdown-toggle" 
+                  data-bs-toggle="dropdown"
+                  style={{ cursor: 'pointer' }}
+                >
+                  <i className="bi bi-person-fill" style={{ color: 'var(--green)', fontSize: '1rem', marginRight: '4px' }}></i>
+                  <span>{currentShiftUser}</span>
+                </div>
+                <ul className="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow border-0" style={{ backgroundColor: 'var(--card-bg)' }}>
+                  <li>
+                    <button className="dropdown-item text-danger d-flex align-items-center gap-2 py-2" onClick={handleLogout}>
+                      <i className="bi bi-box-arrow-right"></i>
+                      <span>Akhiri Shift</span>
+                    </button>
+                  </li>
+                </ul>
               </div>
-              {/* Realtime status badge */}
+
+              {/* Status Badge */}
               <div title={`Realtime: ${realtimeStatus}`} style={{
                 display: 'flex', alignItems: 'center', gap: '4px',
                 fontSize: '.65rem', fontWeight: 700, letterSpacing: '.5px',
-                padding: '2px 7px', borderRadius: '99px', cursor: 'default',
+                padding: '3px 6px', borderRadius: '4px', cursor: 'default',
                 background: realtimeStatus === 'SUBSCRIBED'
                   ? 'rgba(63,185,80,.15)' : realtimeStatus === 'CONNECTING'
                   ? 'rgba(227,179,65,.15)' : 'rgba(249,115,22,.15)',
                 color: realtimeStatus === 'SUBSCRIBED'
                   ? 'var(--green)' : realtimeStatus === 'CONNECTING'
                   ? 'var(--yellow)' : 'var(--orange)',
-                border: `1px solid ${realtimeStatus === 'SUBSCRIBED'
-                  ? 'rgba(63,185,80,.35)' : realtimeStatus === 'CONNECTING'
-                  ? 'rgba(227,179,65,.35)' : 'rgba(249,115,22,.35)'}`,
               }}>
                 <span style={{
                   width: 6, height: 6, borderRadius: '50%', display: 'inline-block',
@@ -1021,6 +1034,9 @@ function App() {
                   {realtimeStatus === 'SUBSCRIBED' ? 'LIVE' : realtimeStatus === 'CONNECTING' ? 'SYNC…' : 'OFFLINE'}
                 </span>
               </div>
+
+              <div className="vr d-none d-sm-block" style={{ opacity: 0.15, height: '24px' }}></div>
+
               <LiveClock />
             </div>
           </div>

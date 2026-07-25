@@ -9,9 +9,9 @@ function LoginPage({ onLogin }) {
   const [error, setError] = useState('');
 
   const handleLogin = () => {
-    if (!username) { setError('⚠️ Pilih nama kasir!'); return; }
-    if (!SHIFT_USERS.includes(username.toLowerCase())) { setError('❌ Kasir tidak ditemukan!'); return; }
-    if (password !== SHIFT_PASS) { setError('❌ Password salah!'); return; }
+    if (!username) { setError('Pilih nama kasir!'); return; }
+    if (!SHIFT_USERS.includes(username.toLowerCase())) { setError('Kasir tidak ditemukan!'); return; }
+    if (password !== SHIFT_PASS) { setError('Password shift tidak sesuai!'); return; }
     setError('');
     onLogin(username);
   };
@@ -51,7 +51,14 @@ function LoginPage({ onLogin }) {
         <button className="btn-login" onClick={handleLogin}>
           <i className="bi bi-box-arrow-in-right"></i>Mulai Shift
         </button>
-        <div className="login-err">{error}</div>
+        <div className="login-err d-flex align-items-center justify-content-center gap-2">
+          {error && (
+            <>
+              <i className="bi bi-exclamation-triangle-fill"></i>
+              <span>{error}</span>
+            </>
+          )}
+        </div>
         <div style={{ marginTop: '18px', fontSize: '.72rem', color: 'var(--text2)', textAlign: 'center' }}>
           <i className="bi bi-shield-lock me-1"></i>Akses terbatas untuk kasir Evren House
         </div>

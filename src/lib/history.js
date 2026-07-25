@@ -1,5 +1,11 @@
-export function aggregateHistory(transactions, mode, value) {
-  const filtered = transactions.filter(t => t.tanggal?.startsWith(value));
+export function aggregateHistory(transactions, mode, value, sortOrder = 'desc') {
+  const filtered = transactions
+    .filter(t => t.tanggal?.startsWith(value))
+    .sort((a, b) => {
+      const timeA = Number(a.endTime || a.end_time || 0);
+      const timeB = Number(b.endTime || b.end_time || 0);
+      return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
+    });
 
   const totalPokok = filtered.reduce((s, t) => s + (t.totalBase || 0), 0);
   const totalPokokCash = filtered.reduce((s, t) => s + ((t.payAwal || 'cash') === 'cash' ? (t.totalBase || 0) : 0), 0);
@@ -25,3 +31,4 @@ export function aggregateHistory(transactions, mode, value) {
     grandTotal
   };
 }
+
