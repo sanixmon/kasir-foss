@@ -1,0 +1,70 @@
+import React from 'react';
+import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import HistoryTab from '../components/HistoryTab';
+
+describe('HistoryTab - Immutability & Role Based Permissions', () => {
+  const mockTxns = [
+    {
+      id: 'txn-1',
+      no: '001',
+      nama: 'John Doe',
+      shift: 'PAGI',
+      tanggal: new Date().toISOString().slice(0, 10),
+      startTime: Date.now() - 3600000,
+      endTime: Date.now(),
+      items: '1x Stroller',
+      totalBase: 20000,
+      grandTotal: 0,
+      totalAll: 20000,
+      payAwal: 'cash'
+    }
+  ];
+
+  it('restricts cashier view to today and hides both edit and delete buttons', () => {
+    render(
+      <HistoryTab
+        transactions={mockTxns}
+        onPrintTxn={vi.fn()}
+        onDeleteTxn={vi.fn()}
+        currentUserRole="cashier"
+      />
+    );
+
+    // Verify cashier mode badge is visible
+    expect(screen.getByText(/Mode Kasir/i)).toBeInTheDocument();
+    
+    // Verify historical filter dropdown (Harian/Bulanan/Tahunan) is not rendered
+    expect(screen.queryByRole('option', { name: 'Bulanan' })).toBeNull();
+    expect(screen.queryByText('Export')).toBeNull();
+
+    // Verify row action buttons: ONLY Print Struk is visible; Edit & Hapus are hidden
+    expect(screen.getByTitle('Print Struk')).toBeInTheDocument();
+    expect(screen.queryByTitle('Edit Bill / Transaksi')).toBeNull();
+    expect(screen.queryByTitle('Hapus Bill')).toBeNull();
+  });
+
+  it('shows full history controls and delete option for admin, BUT NO edit button (immutability rule)', () => {
+    const mockDelete = vi.fn();
+
+    render(
+      <HistoryTab
+        transactions={mockTxns}
+        onPrintTxn={vi.fn()}
+        onDeleteTxn={mockDelete}
+        currentUserRole="admin"
+      />
+    );
+
+    // Verify mode dropdown, Export button, and Delete button are present
+    expect(screen.getByText('Export')).toBeInTheDocument();
+    expect(screen.getByTitle('Hapus Bill')).toBeInTheDocument();
+
+    // STRICT BUSINESS RULE: Edit bill button must NEVER be present for anyone, even admin, to prevent value manipulation
+    expect(screen.queryByTitle('Edit Bill / Transaksi')).toBeNull();
+
+    // Test delete trigger
+    fireEvent.click(screen.getByTitle('Hapus Bill'));
+    expect(mockDelete).toHaveBeenCalledWith('txn-1');
+  });
+});

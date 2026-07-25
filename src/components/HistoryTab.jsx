@@ -21,25 +21,27 @@ const dateStr = ts => {
 
 const timeStr = ts => new Date(ts).toTimeString().slice(0,5);
 
-function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
+function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, currentUserRole }) {
   const getLocalDateString = () => {
     const d = new Date();
     d.setHours(d.getHours() - 6); // Shift rollover at 6 AM
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   };
+  const isCashier = currentUserRole === 'cashier';
   const [filterMode, setFilterMode] = useState('daily');
   const [filterDate, setFilterDate] = useState(getLocalDateString());
   const [filterMonth, setFilterMonth] = useState(getLocalDateString().slice(0, 7));
   const [filterYear, setFilterYear] = useState(getLocalDateString().slice(0, 4));
   const [sortOrder, setSortOrder] = useState('desc'); // Urutkan berdasarkan waktu close bill
 
-  const filterValue = filterMode === 'daily' ? filterDate : filterMode === 'monthly' ? filterMonth : filterYear;
+  const effectiveMode = isCashier ? 'daily' : filterMode;
+  const filterValue = isCashier ? getLocalDateString() : (filterMode === 'daily' ? filterDate : filterMode === 'monthly' ? filterMonth : filterYear);
 
   const {
     filtered, totalPokok, totalPokokCash, totalPokokQris, 
     totalTambahan, totalOTCash, totalOTQris, 
     totalCashAll, totalQrisAll, grandTotal
-  } = aggregateHistory(transactions, filterMode, filterValue, sortOrder);
+  } = aggregateHistory(transactions, effectiveMode, filterValue, sortOrder);
 
   const handleExport = () => {
     if (filtered.length === 0) { 
@@ -76,14 +78,24 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
         <div className="panel-head flex-wrap gap-2">
           <i className="bi bi-clock-history clr-green"></i><span>Riwayat Transaksi</span>
           <div className="ms-auto d-flex gap-2 flex-wrap align-items-center">
-            <select className="cfield-sm" value={filterMode} onChange={e => setFilterMode(e.target.value)}>
-              <option value="daily">Harian</option>
-              <option value="monthly">Bulanan</option>
-              <option value="yearly">Tahunan</option>
-            </select>
-            {filterMode === 'daily' && <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="cfield-sm" />}
-            {filterMode === 'monthly' && <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="cfield-sm" />}
-            {filterMode === 'yearly' && <input type="number" min="2024" max="2099" value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="cfield-sm" style={{width:'80px'}} />}
+            {isCashier ? (
+              <div className="badge-shift bg-transparent border border-secondary text-secondary d-flex align-items-center gap-2 px-3 py-1 rounded-3 font-monospace" style={{ fontSize: '0.85rem' }}>
+                <i className="bi bi-calendar2-check clr-cyan fs-6"></i>
+                <span className="fw-bold text-light">Hari Ini ({getLocalDateString()})</span>
+                <span className="badge bg-secondary opacity-75 ms-1">Mode Kasir</span>
+              </div>
+            ) : (
+              <>
+                <select className="cfield-sm" value={filterMode} onChange={e => setFilterMode(e.target.value)}>
+                  <option value="daily">Harian</option>
+                  <option value="monthly">Bulanan</option>
+                  <option value="yearly">Tahunan</option>
+                </select>
+                {filterMode === 'daily' && <input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} className="cfield-sm" />}
+                {filterMode === 'monthly' && <input type="month" value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="cfield-sm" />}
+                {filterMode === 'yearly' && <input type="number" min="2024" max="2099" value={filterYear} onChange={(e) => setFilterYear(e.target.value)} className="cfield-sm" style={{width:'80px'}} />}
+              </>
+            )}
             
             <div className="d-flex align-items-center gap-1 ms-2">
               <i className="bi bi-sort-down-alt clr-cyan" title="Urutkan menurut waktu close bill" style={{ fontSize: '1.1rem' }}></i>
@@ -98,7 +110,9 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
               </select>
             </div>
 
-            <button className="btn-export ms-1" onClick={handleExport}><i className="bi bi-download me-1"></i>Export</button>
+            {!isCashier && (
+              <button className="btn-export ms-1" onClick={handleExport}><i className="bi bi-download me-1"></i>Export</button>
+            )}
           </div>
         </div>
         <div className="panel-body">
@@ -175,7 +189,9 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn }) {
                         <td><span style={{ fontWeight: 800, color: 'var(--yellow)' }}>{fmtRp(t.totalAll || ((t.totalBase || 0) + (t.grandTotal || 0)))}</span></td>
                         <td>
                           <button className="act-btn me-2" onClick={() => onPrintTxn(t)} title="Print Struk"><i className="bi bi-printer-fill text-secondary"></i></button>
-                          <button className="act-btn" onClick={() => onDeleteTxn(t.id)} title="Hapus"><i className="bi bi-trash3-fill clr-red"></i></button>
+                          {!isCashier && (
+                            <button className="act-btn" onClick={() => onDeleteTxn(t.id)} title="Hapus Bill"><i className="bi bi-trash3-fill clr-red"></i></button>
+                          )}
                         </td>
                       </tr>
                     );

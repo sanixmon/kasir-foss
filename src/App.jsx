@@ -1061,8 +1061,24 @@ function App() {
             transactions={transactions}
             onPrintTxn={handlePrintSelesai}
             onDeleteTxn={(id) => {
-              setPendingAction({ type: 'deleteTxn', id });
+              if (currentUserRole === 'admin') {
+                if (window.confirm('Hapus bill / riwayat transaksi ini?')) {
+                  setTransactions(prev => {
+                    const updated = prev.filter(t => t.id !== id);
+                    safeSetItem('kw_txns', JSON.stringify(updated));
+                    return updated;
+                  });
+                  if (sbConnected) {
+                    sb.from('transactions').delete().eq('id', id).then(() => {
+                      console.log('Deleted transaction from Supabase');
+                    });
+                  }
+                }
+              } else {
+                setPendingAction({ type: 'deleteTxn', id });
+              }
             }}
+            currentUserRole={currentUserRole}
           />
         )}
         {activeTab === 'pengaturan' && currentUserRole === 'cashier' && (
