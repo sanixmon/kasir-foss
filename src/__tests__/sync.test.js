@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeSyncData } from '../lib/sync';
+import { mergeSyncData, getUnsyncedItems, formatTxnForSupabase, formatSessionForSupabase } from '../lib/sync';
 
 describe('mergeSyncData', () => {
   it('keeps completely new offline data', () => {
@@ -38,5 +38,79 @@ describe('mergeSyncData', () => {
     const merged = mergeSyncData(cloudData, localData, customFilter);
     expect(merged.length).toBe(1);
     expect(merged.find(x => x.id === '4')).toBeUndefined();
+  });
+});
+
+describe('Auto-push helpers', () => {
+  it('getUnsyncedItems returns items where _synced is falsy or undefined', () => {
+    const items = [
+      { id: 'a', _synced: true },
+      { id: 'b', _synced: false },
+      { id: 'c' }
+    ];
+    const unsynced = getUnsyncedItems(items);
+    expect(unsynced.length).toBe(2);
+    expect(unsynced.map(x => x.id)).toEqual(['b', 'c']);
+  });
+
+  it('formatTxnForSupabase converts camelCase transaction objects to Supabase snake_case rows', () => {
+    const txns = [{
+      id: 'tx-1',
+      no: 1,
+      queueNo: 5,
+      nama: 'John',
+      tanggal: '2026-07-26',
+      startTime: 100,
+      endTime: 200,
+      items: '1x Mobil',
+      totalBase: 50000,
+      grandTotal: 0,
+      totalAll: 50000,
+      payAwal: 'cash'
+    }];
+    const formatted = formatTxnForSupabase(txns);
+    expect(formatted[0]).toEqual({
+      id: 'tx-1',
+      no: 1,
+      queue_no: 5,
+      nama: 'John',
+      tanggal: '2026-07-26',
+      start_time: 100,
+      end_time: 200,
+      items: '1x Mobil',
+      ot: '-',
+      ot_dur: '-',
+      total_base: 50000,
+      total_ot: 0,
+      total_tol: 0,
+      grand_total: 0,
+      total_all: 50000,
+      pay_awal: 'cash',
+      cash: 0,
+      qris: 0,
+      shift: '-'
+    });
+  });
+
+  it('formatSessionForSupabase converts camelCase session objects to Supabase snake_case rows', () => {
+    const sessions = [{
+      id: 'sess-1',
+      nama: 'Jane',
+      items: ['Mobil A'],
+      startTime: 100,
+      tanggal: '2026-07-26',
+      queueNo: 2,
+      payAwal: 'qris'
+    }];
+    const formatted = formatSessionForSupabase(sessions);
+    expect(formatted[0]).toEqual({
+      id: 'sess-1',
+      nama: 'Jane',
+      items: ['Mobil A'],
+      start_time: 100,
+      tanggal: '2026-07-26',
+      queue_no: 2,
+      pay_awal: 'qris'
+    });
   });
 });

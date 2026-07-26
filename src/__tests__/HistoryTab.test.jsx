@@ -10,7 +10,11 @@ describe('HistoryTab - Immutability & Role Based Permissions', () => {
       no: '001',
       nama: 'John Doe',
       shift: 'PAGI',
-      tanggal: new Date().toISOString().slice(0, 10),
+      tanggal: (() => {
+        const d = new Date();
+        d.setHours(d.getHours() - 6);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })(),
       startTime: Date.now() - 3600000,
       endTime: Date.now(),
       items: '1x Stroller',

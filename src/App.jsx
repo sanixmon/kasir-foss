@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './components/LoginPage';
 import { sb } from './supabase';
-import { mergeSyncData } from './lib/sync';
+import { mergeSyncData, getUnsyncedItems, formatTxnForSupabase, formatSessionForSupabase } from './lib/sync';
 import { checkShiftExpiration } from './lib/shift';
 import DashboardTab from './components/DashboardTab';
 import HistoryTab from './components/HistoryTab';
@@ -230,6 +230,46 @@ function App() {
 
           setActiveSessions(mergedSessions);
           safeSetItem('kw_sessions', JSON.stringify(mergedSessions));
+
+          // Auto-push unsynced local records to cloud upon refresh or connection
+          const unsyncedTxns = getUnsyncedItems(mergedTxns);
+          const unsyncedSessions = getUnsyncedItems(mergedSessions);
+
+          if (unsyncedTxns.length > 0) {
+            console.log(`[Auto-Push] Mendorong ${unsyncedTxns.length} transaksi offline ke cloud saat refresh...`);
+            const rows = formatTxnForSupabase(unsyncedTxns);
+            sb.from('transactions').upsert(rows).then(({ error: txErr }) => {
+              if (!txErr) {
+                console.log('[Auto-Push] Transaksi berhasil didorong ke cloud.');
+                setTransactions(prev => {
+                  const next = prev.map(t => ({ ...t, _synced: true }));
+                  safeSetItem('kw_txns', JSON.stringify(next));
+                  return next;
+                });
+                setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
+              } else {
+                console.error('[Auto-Push] Gagal push transaksi:', txErr);
+              }
+            });
+          }
+
+          if (unsyncedSessions.length > 0) {
+            console.log(`[Auto-Push] Mendorong ${unsyncedSessions.length} sesi sewa offline ke cloud saat refresh...`);
+            const rows = formatSessionForSupabase(unsyncedSessions);
+            sb.from('active_sessions').upsert(rows).then(({ error: sessErr }) => {
+              if (!sessErr) {
+                console.log('[Auto-Push] Sesi aktif berhasil didorong ke cloud.');
+                setActiveSessions(prev => {
+                  const next = prev.map(s => ({ ...s, _synced: true }));
+                  safeSetItem('kw_sessions', JSON.stringify(next));
+                  return next;
+                });
+                setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
+              } else {
+                console.error('[Auto-Push] Gagal push sesi:', sessErr);
+              }
+            });
+          }
         }
       } catch (err) {
         console.error('Supabase auto connect failed:', err);
@@ -237,6 +277,12 @@ function App() {
       }
     };
     testConnection();
+
+    const handleOnline = () => {
+      console.log('Internet pulih: menjalankan auto-push ke cloud...');
+      testConnection();
+    };
+    window.addEventListener('online', handleOnline);
 
     const sub = sb.channel('app-realtime')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'active_sessions' }, payload => {
@@ -350,6 +396,7 @@ function App() {
 
     return () => {
       window.removeEventListener('hashchange', checkHash);
+      window.removeEventListener('online', handleOnline);
       sb.removeChannel(sub);
     };
   }, []);
@@ -713,7 +760,14 @@ function App() {
         queue_no: session.queueNo
       }).then(({ error }) => {
         if (error) console.error('Supabase upsert session error:', error);
-        else console.log('Sewa saved to Supabase');
+        else {
+          console.log('Sewa saved to Supabase');
+          setActiveSessions(prev => {
+            const next = prev.map(x => x.id === session.id ? { ...x, _synced: true } : x);
+            safeSetItem('kw_sessions', JSON.stringify(next));
+            return next;
+          });
+        }
       });
     }
   };
@@ -897,7 +951,14 @@ function App() {
         shift: txn.shift
       }).then(({ error }) => {
         if (error) console.error('Supabase insert txn error:', error);
-        else console.log('Transaction logged to Supabase, no:', txn.no);
+        else {
+          console.log('Transaction logged to Supabase, no:', txn.no);
+          setTransactions(prev => {
+            const next = prev.map(x => x.id === txn.id ? { ...x, _synced: true } : x);
+            safeSetItem('kw_txns', JSON.stringify(next));
+            return next;
+          });
+        }
       });
     } else {
       // Offline: session already updated/deleted locally — no DB action
@@ -1013,26 +1074,43 @@ function App() {
                 </ul>
               </div>
 
-              {/* Status Badge */}
-              <div title={`Realtime: ${realtimeStatus}`} style={{
-                display: 'flex', alignItems: 'center', gap: '4px',
-                fontSize: '.65rem', fontWeight: 700, letterSpacing: '.5px',
-                padding: '3px 6px', borderRadius: '4px', cursor: 'default',
-                background: realtimeStatus === 'SUBSCRIBED'
-                  ? 'rgba(63,185,80,.15)' : realtimeStatus === 'CONNECTING'
-                  ? 'rgba(227,179,65,.15)' : 'rgba(249,115,22,.15)',
-                color: realtimeStatus === 'SUBSCRIBED'
-                  ? 'var(--green)' : realtimeStatus === 'CONNECTING'
-                  ? 'var(--yellow)' : 'var(--orange)',
-              }}>
-                <span style={{
-                  width: 6, height: 6, borderRadius: '50%', display: 'inline-block',
-                  background: 'currentColor',
-                  animation: realtimeStatus === 'SUBSCRIBED' ? 'none' : 'pulse 1.2s infinite',
-                }}/>
-                <span className="d-none d-sm-inline">
-                  {realtimeStatus === 'SUBSCRIBED' ? 'LIVE' : realtimeStatus === 'CONNECTING' ? 'SYNC…' : 'OFFLINE'}
-                </span>
+              {/* Status Badge & Auto Push Refresh */}
+              <div className="d-flex align-items-center gap-2">
+                <div title={`Realtime: ${realtimeStatus}`} style={{
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                  fontSize: '.65rem', fontWeight: 700, letterSpacing: '.5px',
+                  padding: '3px 6px', borderRadius: '4px', cursor: 'default',
+                  background: realtimeStatus === 'SUBSCRIBED'
+                    ? 'rgba(63,185,80,.15)' : realtimeStatus === 'CONNECTING'
+                    ? 'rgba(227,179,65,.15)' : 'rgba(249,115,22,.15)',
+                  color: realtimeStatus === 'SUBSCRIBED'
+                    ? 'var(--green)' : realtimeStatus === 'CONNECTING'
+                    ? 'var(--yellow)' : 'var(--orange)',
+                }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%', display: 'inline-block',
+                    background: 'currentColor',
+                    animation: realtimeStatus === 'SUBSCRIBED' ? 'none' : 'pulse 1.2s infinite',
+                  }}/>
+                  <span className="d-none d-sm-inline">
+                    {realtimeStatus === 'SUBSCRIBED' ? 'LIVE' : realtimeStatus === 'CONNECTING' ? 'SYNC…' : 'OFFLINE'}
+                  </span>
+                </div>
+
+                <button
+                  className="bg-transparent border-0 text-secondary p-1 d-flex align-items-center justify-content-center"
+                  title="Refresh & Auto Push Data ke Cloud"
+                  onClick={() => {
+                    handleSyncPull();
+                    if (sbConnected) {
+                      handleSyncPush();
+                    }
+                  }}
+                  style={{ cursor: 'pointer', fontSize: '1.1rem', color: 'var(--cyan)' }}
+                  aria-label="Refresh & Auto Push ke Cloud"
+                >
+                  <i className="bi bi-arrow-repeat clr-cyan" style={{ transition: 'transform 0.3s ease' }}></i>
+                </button>
               </div>
 
               <div className="vr d-none d-sm-block" style={{ opacity: 0.15, height: '24px' }}></div>
