@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './components/LoginPage';
 import { sb } from './supabase';
-import { mergeSyncData, getUnsyncedItems, formatTxnForSupabase, formatSessionForSupabase } from './lib/sync';
+import { mergeSyncData, getUnsyncedItems, formatTxnForSupabase, formatSessionForSupabase, cleanZombieSessions, findZombieSessionIds } from './lib/sync';
 import { checkShiftExpiration } from './lib/shift';
 import DashboardTab from './components/DashboardTab';
 import HistoryTab from './components/HistoryTab';
@@ -224,13 +224,23 @@ function App() {
             _synced: true
           }));
 
-          // Merge local offline-only active sessions
+          // Merge local offline-only active sessions and clean any zombie sessions (sessions already completed in transactions)
           const localSessions = JSON.parse(localStorage.getItem('kw_sessions') || '[]');
-          const currentTxns = JSON.parse(localStorage.getItem('kw_txns') || '[]');
-          const mergedSessions = mergeSyncData(cs, localSessions, (s) => !currentTxns.some(t => t.id === s.id));
+          const rawMergedSessions = mergeSyncData(cs, localSessions, (s) => !mergedTxns.some(t => t.id === s.id));
+          const mergedSessions = cleanZombieSessions(rawMergedSessions, mergedTxns);
 
           setActiveSessions(mergedSessions);
           safeSetItem('kw_sessions', JSON.stringify(mergedSessions));
+
+          // Clean up zombie sessions from Supabase active_sessions table if any exist
+          const zombieIds = findZombieSessionIds(cs, mergedTxns);
+          if (zombieIds.length > 0) {
+            console.log(`[Zombie Purge] Membersihkan ${zombieIds.length} sesi zombie dari Supabase active_sessions...`);
+            sb.from('active_sessions').delete().in('id', zombieIds).then(({ error: zErr }) => {
+              if (zErr) console.error('Gagal hapus sesi zombie di Supabase:', zErr);
+              else console.log('[Zombie Purge] Sesi zombie berhasil dihapus dari cloud.');
+            });
+          }
 
           // Auto-push unsynced local records to cloud upon refresh or connection
           const unsyncedTxns = getUnsyncedItems(mergedTxns);
@@ -355,6 +365,13 @@ function App() {
             safeSetItem('kw_txns', JSON.stringify(next));
             return next;
           });
+
+          // Hapus sesi aktif lokal jika transaksi dengan ID tersebut telah diselesaikan oleh terminal lain
+          setActiveSessions(prev => {
+            const next = prev.filter(x => x.id !== t.id);
+            safeSetItem('kw_sessions', JSON.stringify(next));
+            return next;
+          });
         } else if (payload.eventType === 'UPDATE') {
           const t = {
             id: payload.new.id,
@@ -452,10 +469,11 @@ function App() {
           _synced: true
         }));
 
-        // Merge offline-only active sessions
+        // Merge offline-only active sessions and filter zombie sessions
         const currentTxns = JSON.parse(localStorage.getItem('kw_txns') || '[]');
         setActiveSessions(prev => {
-          const finalSessions = mergeSyncData(cs, prev, (s) => !currentTxns.some(t => t.id === s.id));
+          const rawMerged = mergeSyncData(cs, prev, (s) => !currentTxns.some(t => t.id === s.id));
+          const finalSessions = cleanZombieSessions(rawMerged, currentTxns);
           safeSetItem('kw_sessions', JSON.stringify(finalSessions));
           return finalSessions;
         });

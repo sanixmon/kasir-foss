@@ -42,3 +42,20 @@ export function formatSessionForSupabase(sessions = []) {
     pay_awal: s.payAwal || 'cash'
   }));
 }
+
+export function cleanZombieSessions(activeSessions = [], transactions = []) {
+  const completedTxnIds = new Set(transactions.map(t => t.id));
+  return activeSessions.filter(s => {
+    if (!s || !s.id) return false;
+    if (completedTxnIds.has(s.id)) return false;
+    if (!s.items || (Array.isArray(s.items) && s.items.length === 0)) return false;
+    return true;
+  });
+}
+
+export function findZombieSessionIds(activeSessions = [], transactions = []) {
+  const completedTxnIds = new Set(transactions.map(t => t.id));
+  return activeSessions
+    .filter(s => s && s.id && (completedTxnIds.has(s.id) || !s.items || (Array.isArray(s.items) && s.items.length === 0)))
+    .map(s => s.id);
+}

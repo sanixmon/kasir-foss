@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mergeSyncData, getUnsyncedItems, formatTxnForSupabase, formatSessionForSupabase } from '../lib/sync';
+import { mergeSyncData, getUnsyncedItems, formatTxnForSupabase, formatSessionForSupabase, cleanZombieSessions, findZombieSessionIds } from '../lib/sync';
 
 describe('mergeSyncData', () => {
   it('keeps completely new offline data', () => {
@@ -112,5 +112,34 @@ describe('Auto-push helpers', () => {
       queue_no: 2,
       pay_awal: 'qris'
     });
+  });
+
+  it('cleanZombieSessions filters out sessions whose ID exists in completed transactions or have no items', () => {
+    const sessions = [
+      { id: 'sess-active', nama: 'Active Customer', items: [{ code: 'sc1', qty: 1 }] },
+      { id: 'sess-completed', nama: 'Completed Customer', items: [{ code: 'sc1', qty: 1 }] },
+      { id: 'sess-empty', nama: 'Empty Customer', items: [] }
+    ];
+    const transactions = [
+      { id: 'sess-completed', no: 1 }
+    ];
+
+    const cleaned = cleanZombieSessions(sessions, transactions);
+    expect(cleaned.length).toBe(1);
+    expect(cleaned[0].id).toBe('sess-active');
+  });
+
+  it('findZombieSessionIds returns array of zombie session IDs', () => {
+    const sessions = [
+      { id: 'sess-active', nama: 'Active Customer', items: [{ code: 'sc1', qty: 1 }] },
+      { id: 'sess-zombie1', nama: 'Completed Customer', items: [{ code: 'sc1', qty: 1 }] },
+      { id: 'sess-zombie2', nama: 'Empty Customer', items: [] }
+    ];
+    const transactions = [
+      { id: 'sess-zombie1', no: 1 }
+    ];
+
+    const zombieIds = findZombieSessionIds(sessions, transactions);
+    expect(zombieIds).toEqual(['sess-zombie1', 'sess-zombie2']);
   });
 });
