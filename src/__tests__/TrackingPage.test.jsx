@@ -3,17 +3,8 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import TrackingPage from '../components/TrackingPage';
 
-vi.mock('../supabase', () => ({
-  sb: {
-    from: () => ({
-      select: () => ({
-        eq: () => ({
-          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
-          single: vi.fn().mockResolvedValue({ data: null, error: new Error('Not found') })
-        })
-      })
-    })
-  }
+vi.mock('../api', () => ({
+  fetchAllData: vi.fn().mockResolvedValue({ sessions: [], transactions: [], serverTime: Date.now() })
 }));
 
 describe('TrackingPage - QR Scan Bug Fix & Offline Storage Fallback', () => {

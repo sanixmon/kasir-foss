@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { sb } from '../supabase';
+import { fetchAllData } from '../api';
 import { fmtDur, fmtRp } from '../App';
 import { calcOTCost } from '../lib/ot';
 import { ITEMS } from '../App';
@@ -28,11 +28,11 @@ function TrackingPage({ trackingId }) {
     }
 
     let isMounted = true;
-    const fetchStatus = async (attempts = 3) => {
+    const fetchStatus = async () => {
       setLoading(true);
       setError('');
 
-      // 1. Cek langsung di localStorage (krusial saat offline atau jeda sinkronisasi cloud)
+      // 1. Cek langsung di localStorage
       try {
         const localSessions = JSON.parse(localStorage.getItem('kw_sessions') || '[]');
         const localSess = localSessions.find(s => s.id === cleanId);
@@ -46,8 +46,6 @@ function TrackingPage({ trackingId }) {
             queueNo: localSess.queueNo || localSess.queue_no || 0
           });
           setLoading(false);
-          // Kita tetap cek ke cloud secara diam-diam di bawah jika memungkinkan, 
-          // tapi karena data lokal sudah ada, kita langsung return
           return;
         }
 
@@ -71,56 +69,42 @@ function TrackingPage({ trackingId }) {
         console.warn('Gagal membaca localStorage tracking:', e);
       }
 
-      // 2. Cek di Supabase dengan mekanisme auto-retry (mengatasi latensi sinkronisasi cloud)
-      for (let i = 0; i < attempts; i++) {
-        try {
-          const { data: activeData, error: activeErr } = await sb
-            .from('active_sessions')
-            .select('*')
-            .eq('id', cleanId)
-            .maybeSingle();
-
-          if (activeData && isMounted) {
+      // 2. Cek via Apps Script API
+      try {
+        const data = await fetchAllData();
+        if (data && isMounted) {
+          const cloudSess = (data.sessions || []).find(s => s.id === cleanId);
+          if (cloudSess) {
             setSession({
-              id: activeData.id,
-              nama: activeData.nama,
-              items: activeData.items || [],
-              startTime: activeData.start_time || activeData.startTime,
-              payAwal: activeData.pay_awal || activeData.payAwal || 'cash',
-              queueNo: activeData.queue_no || activeData.queueNo || 0
+              id: cloudSess.id,
+              nama: cloudSess.nama,
+              items: cloudSess.items || [],
+              startTime: cloudSess.startTime || cloudSess.start_time,
+              payAwal: cloudSess.payAwal || cloudSess.pay_awal || 'cash',
+              queueNo: cloudSess.queueNo || cloudSess.queue_no || 0
             });
             setLoading(false);
             return;
           }
 
-          const { data: txnData, error: txnErr } = await sb
-            .from('transactions')
-            .select('*')
-            .eq('id', cleanId)
-            .maybeSingle();
-
-          if (txnData && isMounted) {
+          const cloudTxn = (data.transactions || []).find(t => t.id === cleanId);
+          if (cloudTxn) {
             setTxn({
-              ...txnData,
-              start_time: txnData.start_time || txnData.startTime,
-              end_time: txnData.end_time || txnData.endTime,
-              ot_dur: txnData.ot_dur || txnData.otDur || '-',
-              total_ot: txnData.total_ot !== undefined ? txnData.total_ot : (txnData.totalOT || 0),
-              total_all: txnData.total_all !== undefined ? txnData.total_all : (txnData.totalAll || 0),
-              pay_awal: txnData.pay_awal || txnData.payAwal || 'cash',
-              queue_no: txnData.queue_no || txnData.queueNo || 0
+              ...cloudTxn,
+              start_time: cloudTxn.start_time || cloudTxn.startTime,
+              end_time: cloudTxn.end_time || cloudTxn.endTime,
+              ot_dur: cloudTxn.ot_dur || cloudTxn.otDur || '-',
+              total_ot: cloudTxn.total_ot !== undefined ? cloudTxn.total_ot : (cloudTxn.totalOT || 0),
+              total_all: cloudTxn.total_all !== undefined ? cloudTxn.total_all : (cloudTxn.totalAll || 0),
+              pay_awal: cloudTxn.pay_awal || cloudTxn.payAwal || 'cash',
+              queue_no: cloudTxn.queue_no || cloudTxn.queueNo || 0
             });
             setLoading(false);
             return;
           }
-        } catch (err) {
-          console.error('Tracking fetch attempt error:', err);
         }
-
-        // Tunda 400 miliseconds sebelum mencoba lagi bila data belum muncul di cloud
-        if (i < attempts - 1) {
-          await new Promise(res => setTimeout(res, 400));
-        }
+      } catch (err) {
+        console.error('Tracking fetch error:', err);
       }
 
       if (isMounted) {
@@ -129,7 +113,7 @@ function TrackingPage({ trackingId }) {
       }
     };
 
-    fetchStatus(3);
+    fetchStatus();
     return () => { isMounted = false; };
   }, [cleanId, retryCount]);
 
