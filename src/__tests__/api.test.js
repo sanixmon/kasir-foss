@@ -7,7 +7,7 @@ describe('Apps Script API Client', () => {
     setApiUrl('https://script.google.com/test/exec');
   });
 
-  it('fetchAllData performs POST request with fetch_data action', async () => {
+  it('fetchAllData performs GET request to Apps Script URL', async () => {
     const mockData = { sessions: [], transactions: [], serverTime: 123456789 };
     global.fetch = vi.fn().mockResolvedValue({
       ok: true,
@@ -15,10 +15,7 @@ describe('Apps Script API Client', () => {
     });
 
     const result = await fetchAllData();
-    expect(global.fetch).toHaveBeenCalledWith('https://script.google.com/test/exec', expect.objectContaining({
-      method: 'POST',
-      body: JSON.stringify({ action: 'fetch_data', payload: {} })
-    }));
+    expect(global.fetch).toHaveBeenCalledWith('https://script.google.com/test/exec');
     expect(result).toEqual(mockData);
   });
 
