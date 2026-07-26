@@ -9,14 +9,14 @@ export function getUnsyncedItems(items = []) {
 
 export function formatTxnForSupabase(txns = []) {
   return txns.map(t => ({
-    id: t.id,
+    id: t.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `txn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
     no: t.no || 0,
     queue_no: t.queueNo || 0,
-    nama: t.nama,
-    tanggal: t.tanggal,
-    start_time: t.startTime,
-    end_time: t.endTime,
-    items: t.items,
+    nama: t.nama || 'Penyewa',
+    tanggal: t.tanggal || new Date().toISOString().slice(0, 10),
+    start_time: t.startTime || Date.now(),
+    end_time: t.endTime || Date.now(),
+    items: t.items || '-',
     ot: t.ot || '-',
     ot_dur: t.otDur || '-',
     total_base: t.totalBase || 0,
@@ -33,11 +33,11 @@ export function formatTxnForSupabase(txns = []) {
 
 export function formatSessionForSupabase(sessions = []) {
   return sessions.map(s => ({
-    id: s.id,
-    nama: s.nama,
-    items: s.items,
-    start_time: s.startTime,
-    tanggal: s.tanggal,
+    id: s.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`),
+    nama: s.nama || 'Penyewa',
+    items: s.items || [],
+    start_time: s.startTime || Date.now(),
+    tanggal: s.tanggal || new Date().toISOString().slice(0, 10),
     queue_no: s.queueNo || 0,
     pay_awal: s.payAwal || 'cash'
   }));

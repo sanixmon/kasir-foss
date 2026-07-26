@@ -323,3 +323,54 @@ describe('OT edge cases from weekend rush', () => {
     expect(totalCost).toBe(50000);
   });
 });
+
+// ─── 7. Offline-first conflict resolution worst-cases ─────────────────────────
+
+describe('Offline-First Conflict Resolution', () => {
+  it('prevents offline sessions from overriding cloud deletions if they were already synced', () => {
+    const cloudSessions = [{ id: 'sess-active-1', nama: 'Active' }];
+    const localSessions = [
+      { id: 'sess-active-1', nama: 'Active', _synced: true },
+      { id: 'sess-deleted-on-cloud', nama: 'Deleted', _synced: true },
+      { id: 'sess-offline-new', nama: 'New Offline', _synced: false }
+    ];
+
+    const { mergeSyncData } = require('../lib/sync');
+    const merged = mergeSyncData(cloudSessions, localSessions);
+
+    expect(merged.length).toBe(2);
+    expect(merged.map(s => s.id)).toEqual(['sess-active-1', 'sess-offline-new']);
+    expect(merged.find(s => s.id === 'sess-deleted-on-cloud')).toBeUndefined();
+  });
+
+  it('formatTxnForSupabase and formatSessionForSupabase supply safe defaults for broken/missing offline fields', () => {
+    const { formatTxnForSupabase, formatSessionForSupabase } = require('../lib/sync');
+    
+    const brokenTxns = [{ no: 0 }];
+    const formattedTxns = formatTxnForSupabase(brokenTxns);
+    expect(formattedTxns[0].id).toBeDefined();
+    expect(formattedTxns[0].nama).toBe('Penyewa');
+    expect(formattedTxns[0].items).toBe('-');
+
+    const brokenSessions = [{ nama: '' }];
+    const formattedSessions = formatSessionForSupabase(brokenSessions);
+    expect(formattedSessions[0].id).toBeDefined();
+    expect(formattedSessions[0].nama).toBe('Penyewa');
+    expect(formattedSessions[0].items).toEqual([]);
+  });
+
+  it('cleanZombieSessions purges sessions completed during offline mode when transactions exist', () => {
+    const { cleanZombieSessions } = require('../lib/sync');
+    const sessions = [
+      { id: 'offline-completed', nama: 'Customer A', items: [{ code: 'sc1', qty: 1 }] },
+      { id: 'offline-still-running', nama: 'Customer B', items: [{ code: 'sc2', qty: 1 }] }
+    ];
+    const transactions = [
+      { id: 'offline-completed', no: 100 }
+    ];
+
+    const cleaned = cleanZombieSessions(sessions, transactions);
+    expect(cleaned.length).toBe(1);
+    expect(cleaned[0].id).toBe('offline-still-running');
+  });
+});
