@@ -4,7 +4,7 @@ try {
 } catch (e) {
   // Jika Apps Script dibuat terpisah via script.google.com (Standalone Script),
   // masukkan Spreadsheet ID Anda di bawah ini (diambil dari URL Spreadsheet antara /d/ dan /edit):
-  SPREADSHEET_ID = 'MASUKKAN_SPREADSHEET_ID_DISINI';
+  SPREADSHEET_ID = '1WEFm1wjTdFXedMPyKw521COQCKjj5PQxPvHAITiCczI';
 }
 
 const SHEET_SESSIONS = 'ActiveSessions';
@@ -199,6 +199,17 @@ function parseSheetRows(sheet) {
   return [];
 }
 
+function formatTanggal(val) {
+  if (!val) return new Date().toISOString().slice(0, 10);
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(val).slice(0, 10);
+}
+
 function rowToSessionObj(r) {
   let items = [];
   try { items = typeof r[2] === 'string' ? JSON.parse(r[2]) : r[2]; } catch (e) {}
@@ -207,7 +218,7 @@ function rowToSessionObj(r) {
     nama: r[1],
     items: items,
     startTime: Number(r[3]),
-    tanggal: r[4],
+    tanggal: formatTanggal(r[4]),
     queueNo: Number(r[5]),
     payAwal: r[6]
   };
@@ -221,7 +232,7 @@ function rowToTxnObj(r) {
     no: Number(r[1]),
     queueNo: Number(r[2]),
     nama: r[3],
-    tanggal: r[4],
+    tanggal: formatTanggal(r[4]),
     startTime: Number(r[5]),
     endTime: Number(r[6]),
     items: items,
