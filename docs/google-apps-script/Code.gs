@@ -11,6 +11,10 @@ const SHEET_SESSIONS = 'ActiveSessions';
 const SHEET_TRANSACTIONS = 'Transactions';
 const SHEET_SETTINGS = 'Settings';
 
+function doGet(e) {
+  return fetchAllData();
+}
+
 function doPost(e) {
   try {
     const data = JSON.parse(e.postData.contents || '{}');
