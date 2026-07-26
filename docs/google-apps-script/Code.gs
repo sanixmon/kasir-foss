@@ -3,7 +3,7 @@ try {
   const activeId = SpreadsheetApp.getActiveSpreadsheet().getId();
   if (activeId) SPREADSHEET_ID = activeId;
 } catch (e) {
-  // Menggunakan Spreadsheet ID yang disediakan user jika Standalone Script
+  // Menggunakan Spreadsheet ID jika Standalone Script
 }
 
 const SHEET_SESSIONS = 'ActiveSessions';
@@ -62,8 +62,8 @@ function fetchAllData() {
   }
 
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sessSheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
-  const txnSheet = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id', 'no', 'queue_no', 'nama', 'tanggal', 'start_time', 'end_time', 'items', 'ot', 'ot_dur', 'total_base', 'total_ot', 'total_tol', 'grand_total', 'total_all', 'pay_awal', 'cash', 'qris', 'shift']);
+  const sessSheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'queue_no', 'pay_awal']);
+  const txnSheet = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id', 'no', 'queue_no', 'nama', 'start_time', 'end_time', 'items', 'ot', 'ot_dur', 'total_base', 'total_ot', 'total_tol', 'grand_total', 'total_all', 'pay_awal', 'cash', 'qris', 'shift']);
 
   const sessions = parseSheetRows(sessSheet);
   const transactions = parseSheetRows(txnSheet);
@@ -105,13 +105,21 @@ function parseTimestamp(val) {
 
 function formatTanggal(val) {
   if (!val) return new Date().toISOString().slice(0, 10);
-  if (val instanceof Date) {
-    const y = val.getFullYear();
-    const m = String(val.getMonth() + 1).padStart(2, '0');
-    const d = String(val.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
+  let d;
+  if (typeof val === 'number') {
+    d = new Date(val);
+  } else if (val instanceof Date) {
+    d = val;
+  } else {
+    const str = String(val);
+    if (str.length >= 10 && str.indexOf('-') === 4) return str.slice(0, 10);
+    d = new Date(str);
   }
-  return String(val).slice(0, 10);
+  if (isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${date}`;
 }
 
 function formatItemsSummary(items) {
@@ -154,12 +162,12 @@ function addSession(payload) {
   lock.waitLock(10000);
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
+    const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'queue_no', 'pay_awal']);
     
     const today = payload.tanggal || new Date().toISOString().slice(0, 10);
     const lastRow = sheet.getLastRow();
-    const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 8).getValues() : [];
-    const todayRows = rows.filter(r => String(r[4]).slice(0, 10) === today);
+    const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 6).getValues() : [];
+    const todayRows = rows.filter(r => formatTanggal(r[3]) === today);
     const queueNo = todayRows.length + 1;
     
     const id = payload.id || generateShortId('s');
@@ -171,10 +179,8 @@ function addSession(payload) {
       payload.nama || 'Penyewa',
       itemsSummary,
       formatDateTime(startTimeMs),
-      today,
       queueNo,
-      payload.payAwal || 'cash',
-      formatDateTime(Date.now())
+      payload.payAwal || 'cash'
     ];
     
     sheet.appendRow(newRow);
@@ -190,7 +196,7 @@ function editSession(payload) {
   lock.waitLock(10000);
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
+    const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'queue_no', 'pay_awal']);
     const data = sheet.getDataRange().getValues();
     
     for (let i = 1; i < data.length; i++) {
@@ -199,7 +205,7 @@ function editSession(payload) {
         if (payload.items !== undefined) {
           sheet.getRange(i + 1, 3).setValue(formatItemsSummary(payload.items));
         }
-        if (payload.payAwal !== undefined) sheet.getRange(i + 1, 7).setValue(payload.payAwal);
+        if (payload.payAwal !== undefined) sheet.getRange(i + 1, 6).setValue(payload.payAwal);
         break;
       }
     }
@@ -216,8 +222,8 @@ function claimSession(payload) {
   lock.waitLock(10000);
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sessSheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
-    const txnSheet = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id', 'no', 'queue_no', 'nama', 'tanggal', 'start_time', 'end_time', 'items', 'ot', 'ot_dur', 'total_base', 'total_ot', 'total_tol', 'grand_total', 'total_all', 'pay_awal', 'cash', 'qris', 'shift']);
+    const sessSheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'queue_no', 'pay_awal']);
+    const txnSheet = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id', 'no', 'queue_no', 'nama', 'start_time', 'end_time', 'items', 'ot', 'ot_dur', 'total_base', 'total_ot', 'total_tol', 'grand_total', 'total_all', 'pay_awal', 'cash', 'qris', 'shift']);
     
     if (payload.sessionId) {
       const sessData = sessSheet.getDataRange().getValues();
@@ -242,7 +248,6 @@ function claimSession(payload) {
       nextNo,
       payload.queueNo || 0,
       payload.nama || 'Penyewa',
-      payload.tanggal || new Date().toISOString().slice(0, 10),
       formatDateTime(startTimeMs),
       formatDateTime(endTimeMs),
       itemsSummary,
@@ -272,7 +277,7 @@ function deleteSession(payload) {
   lock.waitLock(10000);
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
+    const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'queue_no', 'pay_awal']);
     const data = sheet.getDataRange().getValues();
     
     for (let i = 1; i < data.length; i++) {
@@ -305,9 +310,9 @@ function rowToSessionObj(r) {
     nama: String(r[1]),
     items: parseItems(r[2]),
     startTime: parseTimestamp(r[3]),
-    tanggal: formatTanggal(r[4]),
-    queueNo: Number(r[5] || 0),
-    payAwal: String(r[6] || 'cash')
+    tanggal: formatTanggal(r[3]), // Tanggal diambil otomatis dari start_time!
+    queueNo: Number(r[4] || 0),
+    payAwal: String(r[5] || 'cash')
   };
 }
 
@@ -317,21 +322,21 @@ function rowToTxnObj(r) {
     no: Number(r[1] || 0),
     queueNo: Number(r[2] || 0),
     nama: String(r[3]),
-    tanggal: formatTanggal(r[4]),
-    startTime: parseTimestamp(r[5]),
-    endTime: parseTimestamp(r[6]),
-    items: parseItems(r[7]),
-    ot: String(r[8] || '-'),
-    otDur: String(r[9] || '-'),
-    totalBase: Number(r[10] || 0),
-    totalOT: Number(r[11] || 0),
-    totalTol: Number(r[12] || 0),
-    grandTotal: Number(r[13] || 0),
-    totalAll: Number(r[14] || 0),
-    payAwal: String(r[15] || 'cash'),
-    cash: Number(r[16] || 0),
-    qris: Number(r[17] || 0),
-    shift: String(r[18] || '-')
+    tanggal: formatTanggal(r[4]), // Tanggal diambil otomatis dari start_time!
+    startTime: parseTimestamp(r[4]),
+    endTime: parseTimestamp(r[5]),
+    items: parseItems(r[6]),
+    ot: String(r[7] || '-'),
+    otDur: String(r[8] || '-'),
+    totalBase: Number(r[9] || 0),
+    totalOT: Number(r[10] || 0),
+    totalTol: Number(r[11] || 0),
+    grandTotal: Number(r[12] || 0),
+    totalAll: Number(r[13] || 0),
+    payAwal: String(r[14] || 'cash'),
+    cash: Number(r[15] || 0),
+    qris: Number(r[16] || 0),
+    shift: String(r[17] || '-')
   };
 }
 
