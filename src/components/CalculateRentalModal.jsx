@@ -3,13 +3,20 @@ import { ITEMS, fmtRp, fmtDur } from '../App';
 import { calcOT } from '../lib/ot';
 
 function CalculateRentalModal({ session, onClose, onProceedPayment }) {
-  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - session.startTime) / 1000));
-  const [elapsedMin, setElapsedMin] = useState(() => Math.floor((Date.now() - session.startTime) / 1000) / 60);
+  // Guard: if startTime is 0 / epoch 1970 (backend NaN bug), default to now
+  const safeStart = (session.startTime && session.startTime > Date.now() - 12 * 60 * 60 * 1000)
+    ? session.startTime
+    : Date.now();
+  const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - safeStart) / 1000));
+  const [elapsedMin, setElapsedMin] = useState(() => Math.floor((Date.now() - safeStart) / 1000) / 60);
   const [itemsCalc, setItemsCalc] = useState([]);
   const [manualAdj, setManualAdj] = useState(0);
 
   useEffect(() => {
-    const el = Math.floor((Date.now() - session.startTime) / 1000);
+    const safeStart = (session.startTime && session.startTime > Date.now() - 12 * 60 * 60 * 1000)
+      ? session.startTime
+      : Date.now();
+    const el = Math.floor((Date.now() - safeStart) / 1000);
     const elMin = el / 60;
     setElapsed(el);
     setElapsedMin(elMin);
