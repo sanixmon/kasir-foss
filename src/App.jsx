@@ -141,7 +141,8 @@ function App() {
       const hash = window.location.hash;
       if (hash.startsWith('#track/')) {
         setIsTrackingMode(true);
-        setTrackingId(hash.replace('#track/', '').trim());
+        const cleanId = hash.replace('#track/', '').split('?')[0].split('&')[0].replace(/\/+$/, '').trim();
+        setTrackingId(cleanId);
       } else {
         setIsTrackingMode(false);
         setTrackingId('');
@@ -928,29 +929,10 @@ function App() {
     }
 
     if (sbConnected) {
-      // Session already deleted/updated by claim_and_update_session above — only insert txn
-      sb.from('transactions').insert({
-        id: txn.id,
-        no: txn.no,
-        queue_no: txn.queueNo || 0,
-        nama: txn.nama,
-        tanggal: txn.tanggal,
-        start_time: txn.startTime,
-        end_time: txn.endTime,
-        items: txn.items,
-        ot: txn.ot,
-        ot_dur: txn.otDur,
-        total_base: txn.totalBase,
-        total_ot: txn.totalOT,
-        total_tol: txn.totalTol,
-        grand_total: txn.grandTotal,
-        total_all: txn.totalAll,
-        pay_awal: txn.payAwal,
-        cash: txn.cash,
-        qris: txn.qris,
-        shift: txn.shift
-      }).then(({ error }) => {
-        if (error) console.error('Supabase insert txn error:', error);
+      // Session already deleted/updated by claim_and_update_session above — upsert txn to avoid duplicates/conflicts
+      const rows = formatTxnForSupabase([txn]);
+      sb.from('transactions').upsert(rows).then(({ error }) => {
+        if (error) console.error('Supabase upsert txn error:', error);
         else {
           console.log('Transaction logged to Supabase, no:', txn.no);
           setTransactions(prev => {

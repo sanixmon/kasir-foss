@@ -12,56 +12,126 @@ function TrackingPage({ trackingId }) {
   
   // For live timer
   const [now, setNow] = useState(Date.now());
+  const [retryCount, setRetryCount] = useState(0);
+
+  const cleanId = (trackingId || '').split('?')[0].split('&')[0].replace(/\/+$/, '').trim();
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+  };
 
   useEffect(() => {
-    const fetchStatus = async () => {
+    if (!cleanId) {
+      setError('ID sesi tidak valid.');
+      setLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchStatus = async (attempts = 3) => {
       setLoading(true);
       setError('');
+
+      // 1. Cek langsung di localStorage (krusial saat offline atau jeda sinkronisasi cloud)
       try {
-        // 1. Cek di active_sessions
-        const { data: activeData, error: activeErr } = await sb
-          .from('active_sessions')
-          .select('*')
-          .eq('id', trackingId)
-          .single();
-          
-        if (activeData) {
+        const localSessions = JSON.parse(localStorage.getItem('kw_sessions') || '[]');
+        const localSess = localSessions.find(s => s.id === cleanId);
+        if (localSess && isMounted) {
           setSession({
-            id: activeData.id,
-            nama: activeData.nama,
-            items: activeData.items || [],
-            startTime: activeData.start_time,
-            payAwal: activeData.pay_awal,
-            queueNo: activeData.queue_no
+            id: localSess.id,
+            nama: localSess.nama,
+            items: localSess.items || [],
+            startTime: localSess.startTime || localSess.start_time,
+            payAwal: localSess.payAwal || localSess.pay_awal || 'cash',
+            queueNo: localSess.queueNo || localSess.queue_no || 0
+          });
+          setLoading(false);
+          // Kita tetap cek ke cloud secara diam-diam di bawah jika memungkinkan, 
+          // tapi karena data lokal sudah ada, kita langsung return
+          return;
+        }
+
+        const localTxns = JSON.parse(localStorage.getItem('kw_txns') || '[]');
+        const localTxn = localTxns.find(t => t.id === cleanId);
+        if (localTxn && isMounted) {
+          setTxn({
+            ...localTxn,
+            start_time: localTxn.start_time || localTxn.startTime,
+            end_time: localTxn.end_time || localTxn.endTime,
+            ot_dur: localTxn.ot_dur || localTxn.otDur || '-',
+            total_ot: localTxn.total_ot !== undefined ? localTxn.total_ot : (localTxn.totalOT || 0),
+            total_all: localTxn.total_all !== undefined ? localTxn.total_all : (localTxn.totalAll || 0),
+            pay_awal: localTxn.pay_awal || localTxn.payAwal || 'cash',
+            queue_no: localTxn.queue_no || localTxn.queueNo || 0
           });
           setLoading(false);
           return;
         }
+      } catch (e) {
+        console.warn('Gagal membaca localStorage tracking:', e);
+      }
 
-        // 2. Kalau tidak ada, cek di transactions (sudah selesai)
-        const { data: txnData, error: txnErr } = await sb
-          .from('transactions')
-          .select('*')
-          .eq('id', trackingId)
-          .single();
-          
-        if (txnData) {
-          setTxn(txnData);
-          setLoading(false);
-          return;
+      // 2. Cek di Supabase dengan mekanisme auto-retry (mengatasi latensi sinkronisasi cloud)
+      for (let i = 0; i < attempts; i++) {
+        try {
+          const { data: activeData, error: activeErr } = await sb
+            .from('active_sessions')
+            .select('*')
+            .eq('id', cleanId)
+            .maybeSingle();
+
+          if (activeData && isMounted) {
+            setSession({
+              id: activeData.id,
+              nama: activeData.nama,
+              items: activeData.items || [],
+              startTime: activeData.start_time || activeData.startTime,
+              payAwal: activeData.pay_awal || activeData.payAwal || 'cash',
+              queueNo: activeData.queue_no || activeData.queueNo || 0
+            });
+            setLoading(false);
+            return;
+          }
+
+          const { data: txnData, error: txnErr } = await sb
+            .from('transactions')
+            .select('*')
+            .eq('id', cleanId)
+            .maybeSingle();
+
+          if (txnData && isMounted) {
+            setTxn({
+              ...txnData,
+              start_time: txnData.start_time || txnData.startTime,
+              end_time: txnData.end_time || txnData.endTime,
+              ot_dur: txnData.ot_dur || txnData.otDur || '-',
+              total_ot: txnData.total_ot !== undefined ? txnData.total_ot : (txnData.totalOT || 0),
+              total_all: txnData.total_all !== undefined ? txnData.total_all : (txnData.totalAll || 0),
+              pay_awal: txnData.pay_awal || txnData.payAwal || 'cash',
+              queue_no: txnData.queue_no || txnData.queueNo || 0
+            });
+            setLoading(false);
+            return;
+          }
+        } catch (err) {
+          console.error('Tracking fetch attempt error:', err);
         }
 
-        // 3. Kalau tidak ada di keduanya
-        setError('Sesi tidak ditemukan atau sudah dihapus.');
-      } catch (err) {
-        console.error('Tracking fetch error:', err);
-        setError('Gagal memuat status. Pastikan koneksi internet stabil.');
+        // Tunda 400 miliseconds sebelum mencoba lagi bila data belum muncul di cloud
+        if (i < attempts - 1) {
+          await new Promise(res => setTimeout(res, 400));
+        }
       }
-      setLoading(false);
+
+      if (isMounted) {
+        setError('Sesi tidak ditemukan atau sudah dihapus.');
+        setLoading(false);
+      }
     };
 
-    fetchStatus();
-  }, [trackingId]);
+    fetchStatus(3);
+    return () => { isMounted = false; };
+  }, [cleanId, retryCount]);
 
   // Live timer tick
   useEffect(() => {
@@ -87,7 +157,10 @@ function TrackingPage({ trackingId }) {
       <div className="d-flex flex-column justify-content-center align-items-center p-4 text-center" style={{ minHeight: '100vh', background: 'var(--bg)', color: 'var(--text)' }}>
         <i className="bi bi-exclamation-triangle-fill mb-3" style={{ fontSize: '3rem', color: 'var(--red)' }}></i>
         <h4 className="mb-2">Oops!</h4>
-        <p style={{ color: 'var(--text2)' }}>{error}</p>
+        <p className="mb-4" style={{ color: 'var(--text2)' }}>{error}</p>
+        <button className="btn btn-sm text-white px-4 py-2" style={{ background: 'var(--primary)', borderRadius: '6px', border: 'none', fontWeight: 600 }} onClick={handleRetry}>
+          <i className="bi bi-arrow-repeat me-2"></i>Coba Lagi / Refresh
+        </button>
       </div>
     );
   }
