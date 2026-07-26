@@ -228,21 +228,19 @@ function parseDateTimeToTimestamp(tanggalVal, timeVal) {
   if (timeVal instanceof Date) return timeVal.getTime();
   
   const timeStr = formatTimeOnly(timeVal) || '00:00:00';
-  const tglStr = formatTanggal(tanggalVal);
+  const shiftTglStr = formatTanggal(tanggalVal);
   
-  let primary = new Date(`${tglStr} ${timeStr}`).getTime();
-  if (isNaN(primary)) return Date.now();
+  let d = new Date(`${shiftTglStr} ${timeStr}`);
+  if (isNaN(d.getTime())) return Date.now();
   
-  const cand1 = primary;
-  const cand2 = primary + 86400000;
-  const cand3 = primary - 86400000;
-  
-  const now = Date.now();
-  const candidates = [cand1, cand2, cand3].filter(c => c <= now + 3600000);
-  if (candidates.length === 0) return primary;
-  
-  candidates.sort((a, b) => Math.abs(a - now) - Math.abs(b - now));
-  return candidates[0];
+  // Deterministic 6 AM Shift Rule: If time is between 00:00:00 and 05:59:59 AM,
+  // the calendar date is shiftTgl + 1 day.
+  const parts = timeStr.split(':');
+  const hh = Number(parts[0] || 0);
+  if (hh < 6) {
+    d.setDate(d.getDate() + 1);
+  }
+  return d.getTime();
 }
 
 function formatItemsSummary(items) {
