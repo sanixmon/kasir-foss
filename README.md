@@ -1,93 +1,129 @@
-# 🛒 Kasir Rental App 🛴
-A high-performance, offline-first Point of Sale (POS) system built with React, Vite, and Supabase. Tailored specifically for rental businesses (scooters, strollers, etc.) requiring precise timer tracking, shift management, and bulletproof offline synchronization.
+# 🛴 Kasir Sheet — Scooter & Stroller Rental POS System ⚡
+
+[![Build & Test](https://img.shields.io/badge/tests-49%20passed-brightgreen.svg)](https://github.com/sanixmon/kasir-sheet)
+[![React](https://img.shields.io/badge/React-19.0-61dafb.svg)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-6.0-646cff.svg)](https://vitejs.dev/)
+[![Backend](https://img.shields.io/badge/Backend-Google%20Apps%20Script-34a853.svg)](https://developers.google.com/apps-script)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+A high-performance, real-time **Point of Sale (POS) & Rental Tracking System** designed specifically for scooter, stroller, and equipment rental businesses. Built with **React 19, Vite, and Google Sheets (via Google Apps Script API)** as a serverless database.
 
 ---
 
 ## ✨ Key Features
 
-### ⚡ Offline-First Architecture & Anti-Zombie Sync
-The app is built to survive internet dropouts without losing a single transaction.
-- **Local Storage Buffer:** Transactions and active sessions are seamlessly cached locally.
-- **Anti-Zombie Sync:** Implements strict `_synced` flagging and `mergeSyncData` logic to ensure deleted data on the cloud doesn't get resurrected as "ghost/zombie" data when local state merges back. 
+### ⏱️ Live Rental Tracking & Precise Overtime (OT) Engine
+- **Real-Time Duration Timers:** Displays elapsed time for all active rentals with visual status badges (Normal, Overtime, Grace Period, and Zombie Session warning > 8 hrs).
+- **Mathematical Grace Period:** Automatic 10-minute 59-second free grace period before applying overtime penalties.
+- **Tiered Overtime Calculation:** Automatically computes Half-Hour OT (11–40 mins) and Full-Hour OT (41–60 mins) across single or multi-hour overdue durations.
+- **Manual Adjustments & Tolerances:** Allows cashiers to adjust or waive overtime items directly during checkout.
 
-### ⏱️ Precision Overtime (OT) Tracking
-No more human error when calculating overtime penalties.
-- **Grace Period (10m 59s):** Customers get an automatic, mathematically-guaranteed free pass if they return items before hitting 11 minutes late.
-- **Half-Hour vs Full-Hour:** Automatically calculates `Half OT` (11-40 mins) and `Full OT` (41-60 mins).
-- **Multi-Hour Loops:** Works flawlessly across any number of overdue hours.
+### 🔄 Dynamic Partial Returns & Split Billing
+- Supports partial returns for group rentals (e.g., returning 1 scooter out of 3 rented).
+- Calculates exact overtime and base costs for returned items while keeping the remaining items active on the rental timer.
 
-### 🔄 Split-Bill & Partial Returns
-Allows returning items dynamically! 
-- If a group rents 3 Scooters but returns 1 early, the app correctly splits the invoice.
-- Auto-calculates proportional overtime for the partial items without disrupting the ongoing rental timer for the rest.
+### 📊 Google Sheets Serverless Database & Caching
+- **Google Apps Script Integration:** Fully synchronized with Google Sheets (`ActiveSessions`, `Transactions`, `Users`, `Settings`).
+- **Low-Latency Polling:** Fast 5-second polling with script-side caching (2s TTL) and `LockService` concurrency safety to prevent race conditions.
+- **Offline-First Local Storage Fallback:** Gracefully caches state locally and auto-prunes storage upon quota limits.
 
-### 🛡️ Auto-Logout & Shift Management
-- **Date-based Auto-Logout:** System strictly bounds a cashier's session to a calendar day. If the date rolls over, the shift is safely terminated to prevent human tracking errors.
-- **Shift Queue Numbering:** Automated tracking of queue numbers per shift.
+### 🌅 Shift & Rollover Management
+- **Deterministic 6 AM Shift Rollover:** Late-night transactions (00:00–05:59 AM) are automatically grouped into the correct shift date.
+- **Daily Queue Numbering:** Automated queue numbering per shift day.
+- **Multi-Role Access Control:** Separate roles for Cashiers and Administrators.
 
-### 📊 Real-Time Tracking & History
-- Built-in UI to view ongoing rentals with live-updating timers (flashing red when overdue).
-- Beautiful History Dashboard covering Daily Incomes, Expenses, and Net Profits.
-- **Dark/Light Mode** consistent theming with premium native CSS designs.
+### 🧾 QR Code Receipts & Thermal Printing
+- **Live Customer Tracking:** Generates shareable QR codes linked to live customer-facing tracking pages (`#track/<id>`).
+- **Print Receipt Ready:** Instant HTML formatting tailored for thermal receipt printers (Start Receipt & Completion Receipt).
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Frontend:** React 19 + Vite
-- **Styling:** Vanilla CSS (Zero heavy UI frameworks for maximum speed)
-- **Database & Sync:** Supabase (PostgreSQL + Realtime Subscriptions)
-- **Testing:** Vitest + React Testing Library (Strictly driven by **Test-Driven Development / TDD**)
+| Layer | Technology |
+|---|---|
+| **Frontend Framework** | React 19 + Vite 6 |
+| **Styling System** | Custom Vanilla CSS (Design Tokens, Dark/Light Mode) |
+| **Backend & Database** | Google Apps Script (GAS) + Google Sheets |
+| **State & Storage** | React Hooks + LocalStorage Buffer |
+| **Testing Suite** | Vitest + React Testing Library (49 Unit & Component Tests) |
 
 ---
 
 ## 🚀 Quick Start
 
+### Prerequisites
+- **Node.js**: v18.0.0 or higher
+- **Package Manager**: `pnpm` (recommended), `npm`, or `yarn`
+
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/fatuhsa/kasir-trial.git
-cd kasir-trial
-npm install
+git clone https://github.com/sanixmon/kasir-sheet.git
+cd kasir-sheet
+pnpm install
 ```
 
-### 2. Environment Variables
-Create a `.env` file in the root directory and add your Supabase credentials:
-```env
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_KEY=your_supabase_anon_key
-```
-
-### 3. Run Development Server
+### 2. Run Development Server
 ```bash
-npm run dev
+pnpm dev
+```
+Open `http://localhost:5173` in your browser.
+
+### 3. Run Test Suite
+```bash
+pnpm test
 ```
 
-### 4. Run Tests
-The core business logics (like Overtime Rules and Sync Merging) are thoroughly unit-tested.
+### 4. Build for Production
 ```bash
-npm run test
+pnpm build
 ```
 
 ---
 
-## 🏗️ Core Algorithms
+## ⚙️ Google Apps Script (GAS) Setup
 
-### The TDD-Proven Overtime Logic
-```javascript
-export function calcOT(elapsedMin, limitMin) {
-  const actualOver = elapsedMin - limitMin;
-  if (actualOver < 0 || Math.floor(actualOver) < 11) return { otFull: 0, otHalf: 0 };
+To connect this frontend to your own Google Sheet:
 
-  let otFull = Math.floor(actualOver / 60);
-  let otHalf = 0;
-  const floorRem = Math.floor(actualOver % 60);
+1. Open your Google Sheet (`ActiveSessions`, `Transactions`, `Users`, `Settings`).
+2. Go to **Extensions > Apps Script**.
+3. Copy the content of [`docs/google-apps-script/Code.gs`](docs/google-apps-script/Code.gs) into your Apps Script editor.
+4. Click **Deploy > New Deployment**.
+5. Select Type: **Web App**.
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+6. Copy the generated Web App URL into your `src/App.jsx` API endpoint configuration.
 
-  if (floorRem >= 11 && floorRem <= 40) otHalf = 1;
-  else if (floorRem > 40) otFull += 1;
+---
 
-  return { otFull, otHalf };
-}
+## 📁 Project Structure
+
+```
+kasir-sheet/
+├── docs/
+│   └── google-apps-script/
+│       ├── Code.gs             # Complete Apps Script backend code
+│       └── README.md           # Apps Script API documentation
+├── src/
+│   ├── __tests__/              # Vitest suite (49 passing tests)
+│   ├── components/             # React UI Components
+│   │   ├── CalculateRentalModal.jsx
+│   │   ├── DashboardTab.jsx
+│   │   ├── HistoryTab.jsx
+│   │   ├── QRCodeModal.jsx
+│   │   └── TrackingPage.jsx
+│   ├── lib/                    # Business Logic (ot.js, history.js, etc.)
+│   ├── App.jsx                 # Core Application Controller & State
+│   └── index.css               # Design Tokens & Theming
+└── package.json
 ```
 
 ---
-*Built with ❤️ and Test-Driven Development.*
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+*Developed with ❤️ for high-reliability rental operations.*
