@@ -21,6 +21,23 @@ const dateStr = ts => {
 
 const timeStr = ts => new Date(ts).toTimeString().slice(0,5);
 
+const formatItemsCell = (items) => {
+  if (!items) return '-';
+  if (typeof items === 'string') return items;
+  if (Array.isArray(items)) {
+    return items.map(it => typeof it === 'object' ? `${it.code || ''}×${it.qty || 1}` : String(it)).join(', ');
+  }
+  return String(items);
+};
+
+const formatTimeStr = (val) => {
+  if (!val) return '-';
+  if (typeof val === 'string' && val.indexOf(':') !== -1) return val.slice(0, 5);
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return String(val);
+  return d.toTimeString().slice(0, 5);
+};
+
 function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, currentUserRole }) {
   const getLocalDateString = () => {
     const d = new Date();
@@ -52,10 +69,10 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, currentUserRole }) 
       No: t.no, 
       Nama: t.nama, 
       Shift: t.shift, 
-      Tanggal: t.tanggal,
-      Mulai: timeStr(t.startTime),
-      Selesai: timeStr(t.endTime),
-      Items: t.items, 
+      Tanggal: t.tanggal || dateStr(t.startTime),
+      Mulai: formatTimeStr(t.startTime),
+      Selesai: formatTimeStr(t.endTime),
+      Items: formatItemsCell(t.items), 
       OT: t.ot, 
       'Durasi OT': t.otDur,
       Pokok: t.totalBase, 
@@ -173,11 +190,11 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, currentUserRole }) 
                         <td>{idx + 1}</td>
                         <td><strong>{t.nama}</strong></td>
                         <td><span className="badge-shift">{shiftCode(t.shift)}</span></td>
-                        <td>{dateStr(t.startTime)}</td>
+                        <td>{t.tanggal || dateStr(t.startTime)}</td>
                         <td style={{ whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
-                          <span>{timeStr(t.startTime)}</span> <i className="bi bi-arrow-right text-secondary mx-1"></i> <strong className="clr-cyan" title="Waktu Close Bill">{timeStr(t.endTime)}</strong>
+                          <span>{formatTimeStr(t.startTime)}</span> <i className="bi bi-arrow-right text-secondary mx-1"></i> <strong className="clr-cyan" title="Waktu Close Bill">{formatTimeStr(t.endTime)}</strong>
                         </td>
-                        <td style={{ fontSize: '0.78rem' }}>{t.items}</td>
+                        <td style={{ fontSize: '0.78rem' }}>{formatItemsCell(t.items)}</td>
                         <td style={{ fontSize: '0.78rem' }}>{t.ot || '-'}</td>
                         <td style={{ fontSize: '0.75rem', color: 'var(--orange)' }}>{t.otDur || '-'}</td>
                         <td>{isCash ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>{fmtRp(t.totalBase || 0)}</span> : '—'}</td>
