@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './components/LoginPage';
-import { sb } from './supabase';
-import { mergeSyncData, getUnsyncedItems, formatTxnForSupabase, formatSessionForSupabase, cleanZombieSessions, findZombieSessionIds } from './lib/sync';
+import { fetchAllData, addSession, editSession, claimSession, deleteSession } from './api';
 import { checkShiftExpiration } from './lib/shift';
 import DashboardTab from './components/DashboardTab';
 import HistoryTab from './components/HistoryTab';
@@ -71,8 +70,8 @@ function App() {
   const [currentUserRole, setCurrentUserRole] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [theme, setTheme] = useState('dark');
-  const [sbConnected, setSbConnected] = useState(false);
-  const [realtimeStatus, setRealtimeStatus] = useState('CONNECTING');
+  const [apiConnected, setApiConnected] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isTrackingMode, setIsTrackingMode] = useState(false);
   const [trackingId, setTrackingId] = useState('');
 
@@ -110,8 +109,33 @@ function App() {
     }
   };
 
+  const loadData = async () => {
+    try {
+      setIsSyncing(true);
+      const data = await fetchAllData();
+      if (data && !data.error) {
+        if (Array.isArray(data.sessions)) {
+          setActiveSessions(data.sessions);
+          safeSetItem('kw_sessions', JSON.stringify(data.sessions));
+        }
+        if (Array.isArray(data.transactions)) {
+          const sorted = [...data.transactions].sort((a, b) => (a.no || 0) - (b.no || 0));
+          setTransactions(sorted);
+          safeSetItem('kw_txns', JSON.stringify(sorted));
+        }
+        setApiConnected(true);
+        setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
+      }
+    } catch (err) {
+      console.error('API polling error:', err);
+      setApiConnected(false);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   useEffect(() => {
-    // Load initial localstorage
+    // Load initial localstorage cache
     try {
       const s = localStorage.getItem('kw_sessions');
       if (s) setActiveSessions(JSON.parse(s));
@@ -172,456 +196,17 @@ function App() {
       }
     }
 
-    // Supabase Auto-Connect
-    const testConnection = async () => {
-      try {
-        const { error } = await sb.from('settings').select('*').limit(1).abortSignal(AbortSignal.timeout(5000));
-        if (error) throw error;
-        setSbConnected(true);
-        // Load data from Supabase silently on start
-        const { data: txns } = await sb.from('transactions').select('*').order('no', { ascending: true }).limit(5000);
-        if (txns) {
-          const ct = txns.map(row => ({
-            id: row.id,
-            no: row.no || 0,
-            nama: row.nama,
-            tanggal: row.tanggal,
-            startTime: row.start_time || 0,
-            endTime: row.end_time || 0,
-            items: row.items,
-            ot: row.ot || '-',
-            otDur: row.ot_dur || '-',
-            totalBase: row.total_base || 0,
-            totalOT: row.total_ot || 0,
-            totalTol: row.total_tol || 0,
-            grandTotal: row.grand_total || 0,
-            totalAll: row.total_all || ((row.total_base || 0) + (row.grand_total || 0)),
-            payAwal: row.pay_awal || 'cash',
-            cash: row.cash || 0,
-            qris: row.qris || 0,
-            shift: row.shift || '-',
-            _synced: true
-          }));
-
-          // Merge local offline-only transactions
-          const localTxns = JSON.parse(localStorage.getItem('kw_txns') || '[]');
-          const mergedTxns = mergeSyncData(ct, localTxns).sort((a, b) => (a.no || 0) - (b.no || 0));
-
-          setTransactions(mergedTxns);
-          safeSetItem('kw_txns', JSON.stringify(mergedTxns));
-        }
-
-        const { data: sess } = await sb.from('active_sessions').select('*');
-        if (sess) {
-          const cs = sess.map(row => ({
-            id: row.id,
-            nama: row.nama,
-            items: row.items || [],
-            startTime: row.start_time || Date.now(),
-            tanggal: row.tanggal || '',
-            payAwal: row.pay_awal || 'cash',
-            queueNo: row.queue_no || 0,
-            _synced: true
-          }));
-
-          // Merge local offline-only active sessions and clean any zombie sessions (sessions already completed in transactions)
-          const localSessions = JSON.parse(localStorage.getItem('kw_sessions') || '[]');
-          const rawMergedSessions = mergeSyncData(cs, localSessions, (s) => !mergedTxns.some(t => t.id === s.id));
-          const mergedSessions = cleanZombieSessions(rawMergedSessions, mergedTxns);
-
-          setActiveSessions(mergedSessions);
-          safeSetItem('kw_sessions', JSON.stringify(mergedSessions));
-
-          // Clean up zombie sessions from Supabase active_sessions table if any exist
-          const zombieIds = findZombieSessionIds(cs, mergedTxns);
-          if (zombieIds.length > 0) {
-            console.log(`[Zombie Purge] Membersihkan ${zombieIds.length} sesi zombie dari Supabase active_sessions...`);
-            sb.from('active_sessions').delete().in('id', zombieIds).then(({ error: zErr }) => {
-              if (zErr) console.error('Gagal hapus sesi zombie di Supabase:', zErr);
-              else console.log('[Zombie Purge] Sesi zombie berhasil dihapus dari cloud.');
-            });
-          }
-
-          // Auto-push unsynced local records to cloud upon refresh or connection
-          const unsyncedTxns = getUnsyncedItems(mergedTxns);
-          const unsyncedSessions = getUnsyncedItems(mergedSessions);
-
-          if (unsyncedTxns.length > 0) {
-            console.log(`[Auto-Push] Mendorong ${unsyncedTxns.length} transaksi offline ke cloud saat refresh...`);
-            const rows = formatTxnForSupabase(unsyncedTxns);
-            sb.from('transactions').upsert(rows).then(({ error: txErr }) => {
-              if (!txErr) {
-                console.log('[Auto-Push] Transaksi berhasil didorong ke cloud.');
-                setTransactions(prev => {
-                  const next = prev.map(t => ({ ...t, _synced: true }));
-                  safeSetItem('kw_txns', JSON.stringify(next));
-                  return next;
-                });
-                setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
-              } else {
-                console.error('[Auto-Push] Gagal push transaksi:', txErr);
-              }
-            });
-          }
-
-          if (unsyncedSessions.length > 0) {
-            console.log(`[Auto-Push] Mendorong ${unsyncedSessions.length} sesi sewa offline ke cloud saat refresh...`);
-            const rows = formatSessionForSupabase(unsyncedSessions);
-            sb.from('active_sessions').upsert(rows).then(({ error: sessErr }) => {
-              if (!sessErr) {
-                console.log('[Auto-Push] Sesi aktif berhasil didorong ke cloud.');
-                setActiveSessions(prev => {
-                  const next = prev.map(s => ({ ...s, _synced: true }));
-                  safeSetItem('kw_sessions', JSON.stringify(next));
-                  return next;
-                });
-                setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
-              } else {
-                console.error('[Auto-Push] Gagal push sesi:', sessErr);
-              }
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Supabase auto connect failed:', err);
-        setSbConnected(false);
-      }
-    };
-    testConnection();
-
-    const handleOnline = () => {
-      console.log('Internet pulih: menjalankan auto-push ke cloud...');
-      testConnection();
-    };
-    window.addEventListener('online', handleOnline);
-
-    const sub = sb.channel('app-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'active_sessions' }, payload => {
-        if (payload.eventType === 'INSERT') {
-          const s = {
-            id: payload.new.id,
-            nama: payload.new.nama,
-            items: payload.new.items || [],
-            startTime: payload.new.start_time || Date.now(),
-            tanggal: payload.new.tanggal || '',
-            payAwal: payload.new.pay_awal || 'cash',
-            queueNo: payload.new.queue_no || 0,
-            _synced: true
-          };
-          setActiveSessions(prev => {
-            const next = prev.some(x => x.id === s.id) ? prev.map(x => x.id === s.id ? s : x) : [...prev, s];
-            safeSetItem('kw_sessions', JSON.stringify(next));
-            return next;
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          const s = {
-            id: payload.new.id,
-            nama: payload.new.nama,
-            items: payload.new.items || [],
-            startTime: payload.new.start_time || Date.now(),
-            tanggal: payload.new.tanggal || '',
-            payAwal: payload.new.pay_awal || 'cash',
-            queueNo: payload.new.queue_no || 0
-          };
-          setActiveSessions(prev => {
-            const next = prev.some(x => x.id === s.id) ? prev.map(x => x.id === s.id ? s : x) : [...prev, s];
-            safeSetItem('kw_sessions', JSON.stringify(next));
-            return next;
-          });
-        } else if (payload.eventType === 'DELETE') {
-          setActiveSessions(prev => {
-            const next = prev.filter(x => x.id !== payload.old.id);
-            safeSetItem('kw_sessions', JSON.stringify(next));
-            return next;
-          });
-        }
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, payload => {
-        if (payload.eventType === 'INSERT') {
-          const t = {
-            id: payload.new.id,
-            no: payload.new.no || 0,
-            nama: payload.new.nama,
-            tanggal: payload.new.tanggal,
-            startTime: payload.new.start_time || 0,
-            endTime: payload.new.end_time || 0,
-            items: payload.new.items,
-            ot: payload.new.ot || '-',
-            otDur: payload.new.ot_dur || '-',
-            totalBase: payload.new.total_base || 0,
-            totalOT: payload.new.total_ot || 0,
-            totalTol: payload.new.total_tol || 0,
-            grandTotal: payload.new.grand_total || 0,
-            totalAll: payload.new.total_all || ((payload.new.total_base || 0) + (payload.new.grand_total || 0)),
-            payAwal: payload.new.pay_awal || 'cash',
-            cash: payload.new.cash || 0,
-            qris: payload.new.qris || 0,
-            shift: payload.new.shift || '-',
-            _synced: true
-          };
-          setTransactions(prev => {
-            const next = prev.some(x => x.id === t.id) ? prev.map(x => x.id === t.id ? t : x) : [...prev, t];
-            next.sort((a, b) => (a.no || 0) - (b.no || 0));
-            safeSetItem('kw_txns', JSON.stringify(next));
-            return next;
-          });
-
-          // Hapus sesi aktif lokal jika transaksi dengan ID tersebut telah diselesaikan oleh terminal lain
-          setActiveSessions(prev => {
-            const next = prev.filter(x => x.id !== t.id);
-            safeSetItem('kw_sessions', JSON.stringify(next));
-            return next;
-          });
-        } else if (payload.eventType === 'UPDATE') {
-          const t = {
-            id: payload.new.id,
-            no: payload.new.no || 0,
-            nama: payload.new.nama,
-            tanggal: payload.new.tanggal,
-            startTime: payload.new.start_time || 0,
-            endTime: payload.new.end_time || 0,
-            items: payload.new.items,
-            ot: payload.new.ot || '-',
-            otDur: payload.new.ot_dur || '-',
-            totalBase: payload.new.total_base || 0,
-            totalOT: payload.new.total_ot || 0,
-            totalTol: payload.new.total_tol || 0,
-            grandTotal: payload.new.grand_total || 0,
-            totalAll: payload.new.total_all || ((payload.new.total_base || 0) + (payload.new.grand_total || 0)),
-            payAwal: payload.new.pay_awal || 'cash',
-            cash: payload.new.cash || 0,
-            qris: payload.new.qris || 0,
-            shift: payload.new.shift || '-',
-            _synced: true
-          };
-          setTransactions(prev => {
-            const next = prev.some(x => x.id === t.id) ? prev.map(x => x.id === t.id ? t : x) : [...prev, t];
-            const sorted = next.sort((a, b) => (a.no || 0) - (b.no || 0));
-            safeSetItem('kw_txns', JSON.stringify(sorted));
-            return sorted;
-          });
-        } else if (payload.eventType === 'DELETE') {
-          setTransactions(prev => {
-            const next = prev.filter(x => x.id !== payload.old.id);
-            safeSetItem('kw_txns', JSON.stringify(next));
-            return next;
-          });
-        }
-      })
-      .subscribe((status) => {
-        setRealtimeStatus(status); // 'SUBSCRIBED' | 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED'
-      });
+    // Initial load & 5-second polling interval
+    loadData();
+    const interval = setInterval(loadData, 5000);
 
     return () => {
       window.removeEventListener('hashchange', checkHash);
-      window.removeEventListener('online', handleOnline);
-      sb.removeChannel(sub);
+      clearInterval(interval);
     };
   }, []);
 
-  const handleSyncPull = async () => {
-    try {
-      // Pull transactions
-      const { data: txns, error: errT } = await sb.from('transactions').select('*').order('no', { ascending: true }).limit(5000);
-      if (errT) throw errT;
-      if (txns) {
-        const ct = txns.map(row => ({
-          id: row.id,
-          no: row.no || 0,
-          nama: row.nama,
-          tanggal: row.tanggal,
-          startTime: row.start_time || 0,
-          endTime: row.end_time || 0,
-          items: row.items,
-          ot: row.ot || '-',
-          otDur: row.ot_dur || '-',
-          totalBase: row.total_base || 0,
-          totalOT: row.total_ot || 0,
-          totalTol: row.total_tol || 0,
-          grandTotal: row.grand_total || 0,
-          totalAll: row.total_all || ((row.total_base || 0) + (row.grand_total || 0)),
-          payAwal: row.pay_awal || 'cash',
-          cash: row.cash || 0,
-          qris: row.qris || 0,
-          shift: row.shift || '-',
-          _synced: true
-        }));
 
-        setTransactions(prev => {
-          const finalTxns = mergeSyncData(ct, prev).sort((a, b) => (a.no || 0) - (b.no || 0));
-          safeSetItem('kw_txns', JSON.stringify(finalTxns));
-          return finalTxns;
-        });
-      }
-
-      // Pull active sessions
-      const { data: sess, error: errS } = await sb.from('active_sessions').select('*');
-      if (errS) throw errS;
-      if (sess) {
-        const cs = sess.map(row => ({
-          id: row.id,
-          nama: row.nama,
-          items: row.items || [],
-          startTime: row.start_time || Date.now(),
-          tanggal: row.tanggal || '',
-          payAwal: row.pay_awal || 'cash',
-          queueNo: row.queue_no || 0,
-          _synced: true
-        }));
-
-        // Merge offline-only active sessions and filter zombie sessions
-        const currentTxns = JSON.parse(localStorage.getItem('kw_txns') || '[]');
-        setActiveSessions(prev => {
-          const rawMerged = mergeSyncData(cs, prev, (s) => !currentTxns.some(t => t.id === s.id));
-          const finalSessions = cleanZombieSessions(rawMerged, currentTxns);
-          safeSetItem('kw_sessions', JSON.stringify(finalSessions));
-          return finalSessions;
-        });
-      }
-
-      // Pull settings
-      const { data: sett, error: errSet } = await sb.from('settings').select('*');
-      if (errSet) throw errSet;
-      if (sett) {
-        sett.forEach(s => {
-          if (s.key === 'adminPassword') {
-            setAdminPassword(s.value);
-            localStorage.setItem('kw_pass', s.value);
-          }
-          if (s.key === 'theme') {
-            setTheme(s.value);
-            localStorage.setItem('kw_theme', s.value);
-            document.documentElement.setAttribute('data-theme', s.value);
-          }
-          if (s.key === 'printMulai') {
-            setPrintMulai(s.value === 'true');
-            localStorage.setItem('kw_printMulai', s.value);
-          }
-          if (s.key === 'printSelesai') {
-            setPrintSelesai(s.value === 'true');
-            localStorage.setItem('kw_printSelesai', s.value);
-          }
-        });
-      }
-
-      // Pull images
-      const { data: imgs, error: errI } = await sb.from('item_images').select('*');
-      if (errI) throw errI;
-      if (imgs) {
-        imgs.forEach(doc => {
-          if (doc.code && doc.image_data) {
-            localStorage.setItem('kw_img_' + doc.code, doc.image_data);
-          }
-        });
-      }
-
-      setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
-      alert('Data ditarik dari cloud!');
-    } catch (err) {
-      console.error(err);
-      alert('Gagal tarik data: ' + err.message);
-    }
-  };
-
-  const handleSyncPush = async () => {
-    if (!sbConnected) {
-      alert('Tidak terhubung ke Supabase!');
-      return;
-    }
-    try {
-      if (transactions.length > 0) {
-        const rows = transactions.map(t => ({
-          id: t.id,
-          no: t.no || 0,
-          queue_no: t.queueNo || 0,
-          nama: t.nama,
-          tanggal: t.tanggal,
-          start_time: t.startTime,
-          end_time: t.endTime,
-          items: t.items,
-          ot: t.ot || '-',
-          ot_dur: t.otDur || '-',
-          total_base: t.totalBase || 0,
-          total_ot: t.totalOT || 0,
-          total_tol: t.totalTol || 0,
-          grand_total: t.grandTotal || 0,
-          total_all: t.totalAll || ((t.totalBase || 0) + (t.grandTotal || 0)),
-          pay_awal: t.payAwal || 'cash',
-          cash: t.cash || 0,
-          qris: t.qris || 0,
-          shift: t.shift || '-'
-        }));
-        await sb.from('transactions').upsert(rows);
-        setTransactions(prev => {
-          const next = prev.map(t => ({...t, _synced: true}));
-          safeSetItem('kw_txns', JSON.stringify(next));
-          return next;
-        });
-      }
-
-      if (activeSessions.length > 0) {
-        const rows = activeSessions.map(s => ({
-          id: s.id,
-          nama: s.nama,
-          items: s.items,
-          start_time: s.startTime,
-          tanggal: s.tanggal,
-          queue_no: s.queueNo || 0,
-          pay_awal: s.payAwal || 'cash'
-        }));
-        await sb.from('active_sessions').upsert(rows);
-        setActiveSessions(prev => {
-          const next = prev.map(s => ({...s, _synced: true}));
-          safeSetItem('kw_sessions', JSON.stringify(next));
-          return next;
-        });
-      }
-
-      await sb.from('settings').upsert([
-        { key: 'adminPassword', value: adminPassword },
-        { key: 'theme', value: theme },
-        { key: 'printMulai', value: String(printMulai) },
-        { key: 'printSelesai', value: String(printSelesai) }
-      ]);
-
-      const imgData = [];
-      ITEMS.forEach(item => {
-        const img = localStorage.getItem('kw_img_' + item.code);
-        if (img) {
-          imgData.push({ code: item.code, image_data: img });
-        }
-      });
-      if (imgData.length > 0) {
-        await sb.from('item_images').upsert(imgData);
-      }
-
-      setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
-      alert('Data didorong ke cloud!');
-    } catch (err) {
-      console.error(err);
-      alert('Gagal dorong data: ' + err.message);
-    }
-  };
-
-  const handleUpdateItemImg = (code, url) => {
-    localStorage.setItem('kw_img_' + code, url);
-    setImageUpdateTrigger(prev => prev + 1);
-    if (sbConnected) {
-      sb.from('item_images').upsert({ code, image_data: url }).then(() => {
-        console.log('Image synced to Supabase');
-      });
-    }
-  };
-
-  const handleResetItemImg = (code) => {
-    localStorage.removeItem('kw_img_' + code);
-    setImageUpdateTrigger(prev => prev + 1);
-    if (sbConnected) {
-      sb.from('item_images').delete().eq('code', code).then(() => {
-        console.log('Image deleted from Supabase');
-      });
-    }
-  };
 
   const triggerPrintReceipt = (html, qrText) => {
     const area = document.getElementById('printArea');
@@ -733,61 +318,30 @@ function App() {
     triggerPrintReceipt(html, trackUrl);
   };
 
-  const handleStartSewa = (nama, items, payAwal) => {
+  const handleStartSewa = async (nama, items, payAwal) => {
     const today = todayStr();
-    let maxQueue = 0;
-    
-    activeSessions.forEach(s => {
-      if (s.tanggal === today && s.queueNo > maxQueue) maxQueue = s.queueNo;
-    });
-    transactions.forEach(t => {
-      if (t.tanggal === today && t.queueNo > maxQueue) maxQueue = t.queueNo;
-    });
-    
-    const newQueueNo = maxQueue + 1;
-    setShiftQueueNo(newQueueNo);
-    localStorage.setItem('kw_shiftQNo', newQueueNo);
-
-    const session = {
+    const sessionData = {
       id: crypto.randomUUID(),
       nama,
       items,
       startTime: Date.now(),
-      tanggal: today,   // Locked at start — survives midnight rollover
-      payAwal,
-      queueNo: newQueueNo
+      tanggal: today,
+      payAwal
     };
 
-    setActiveSessions(prev => {
-      const updated = [...prev, session];
-      safeSetItem('kw_sessions', JSON.stringify(updated));
-      return updated;
-    });
-
-    if (printMulai) {
-      handlePrintMulai(session);
-    }
-
-    if (sbConnected) {
-      sb.from('active_sessions').upsert({
-        id: session.id,
-        nama: session.nama,
-        items: session.items,
-        start_time: session.startTime,
-        tanggal: session.tanggal,
-        pay_awal: session.payAwal,
-        queue_no: session.queueNo
-      }).then(({ error }) => {
-        if (error) console.error('Supabase upsert session error:', error);
-        else {
-          console.log('Sewa saved to Supabase');
-          setActiveSessions(prev => {
-            const next = prev.map(x => x.id === session.id ? { ...x, _synced: true } : x);
-            safeSetItem('kw_sessions', JSON.stringify(next));
-            return next;
-          });
-        }
-      });
+    try {
+      const res = await addSession(sessionData);
+      if (res && res.session) {
+        setActiveSessions(prev => {
+          const updated = [...prev, res.session];
+          safeSetItem('kw_sessions', JSON.stringify(updated));
+          return updated;
+        });
+        if (printMulai) handlePrintMulai(res.session);
+      }
+    } catch (e) {
+      console.error('Failed to start session:', e);
+      alert('Gagal membuat sesi sewa. Periksa koneksi internet.');
     }
   };
 
@@ -814,44 +368,30 @@ function App() {
           safeSetItem('kw_txns', JSON.stringify(updated));
           return updated;
         });
-        
-        if (sbConnected) {
-          sb.from('transactions').delete().eq('id', id).then(() => {
-            console.log('Deleted from Supabase');
-          });
-        }
       }
       setPendingAction(null);
     }
   };
 
-  const handleSaveEditedSession = (updatedSession) => {
-    setActiveSessions(prev => {
-      const updatedSessions = prev.map(s => s.id === updatedSession.id ? updatedSession : s);
-      safeSetItem('kw_sessions', JSON.stringify(updatedSessions));
-      return updatedSessions;
-    });
-
-    if (sbConnected) {
-      sb.from('active_sessions')
-        .update({
-          nama: updatedSession.nama,
-          items: updatedSession.items,
-          pay_awal: updatedSession.payAwal
-        })
-        .eq('id', updatedSession.id)
-        .then(() => {
-          console.log('Updated active session in Supabase');
-        });
+  const handleSaveEditedSession = async (updatedSession) => {
+    try {
+      await editSession(updatedSession);
+      setActiveSessions(prev => {
+        const updatedSessions = prev.map(s => s.id === updatedSession.id ? updatedSession : s);
+        safeSetItem('kw_sessions', JSON.stringify(updatedSessions));
+        return updatedSessions;
+      });
+      setActiveEditSession(null);
+      alert('Sesi diperbarui!');
+    } catch (e) {
+      console.error('Failed to edit session:', e);
+      alert('Gagal memperbarui sesi. Periksa koneksi internet.');
     }
-
-    setActiveEditSession(null);
-    alert('Sesi diperbarui!');
   };
 
   const handleFinalizePayment = async (cash, qris) => {
     if (!activePaymentData) return;
-    const { session, itemsCalc, base, ot, tol, grand, otStr, otDurStr, elapsed, endTime } = activePaymentData;
+    const { session, itemsCalc, base, ot, tol, grand, otStr, otDurStr, endTime } = activePaymentData;
     
     // Calculate items checked out in this transaction
     const itemStr = itemsCalc
@@ -869,45 +409,11 @@ function App() {
       };
     }).filter(it => it.qty > 0);
 
-    // ── Atomic claim: prevent double-checkout race condition ──────────────
-    // When online, atomically delete or update session in DB. If another terminal
-    // already modified/deleted it (returned false), abort and show error.
-    if (sbConnected) {
-      try {
-        const { data: claimed, error: claimErr } = await sb.rpc('claim_and_update_session', { 
-          p_id: session.id,
-          p_expected_items: session.items,
-          p_new_items: remainingItems
-        });
-        if (claimErr) throw claimErr;
-        if (!claimed) {
-          alert('⚠️ Sesi ini sudah diselesaikan atau diubah oleh terminal lain.\nPembayaran dibatalkan.');
-          setActivePaymentData(null);
-          return;
-        }
-      } catch (e) {
-        console.warn('claim_and_update_session failed, proceeding offline:', e);
-        // Network error → fall through to local-only mode
-      }
-    }
-
-    // ── Get collision-proof txn number from DB sequence ───────────────────
-    let txnNo = transactions.length + 1;
-    if (sbConnected) {
-      try {
-        const { data, error } = await sb.rpc('next_txn_no');
-        if (!error && data) txnNo = data;
-      } catch (e) {
-        console.warn('next_txn_no RPC failed, using local count:', e);
-      }
-    }
-
-    const txn = {
-      id: remainingItems.length > 0 ? crypto.randomUUID() : session.id, // Keep session ID only on final return
-      no: txnNo,
+    const claimPayload = {
+      sessionId: session.id,
       queueNo: session.queueNo || 0,
       nama: session.nama,
-      tanggal: session.tanggal || todayStr(), // Use start-day, fallback for old sessions
+      tanggal: session.tanggal || todayStr(),
       startTime: session.startTime,
       endTime,
       items: itemStr,
@@ -924,48 +430,36 @@ function App() {
       shift: currentShiftUser || '-'
     };
 
-    // Update local state (use functional updates to prevent stale closure data loss)
-    setTransactions(prev => {
-      const newTxns = [...prev, txn];
-      safeSetItem('kw_txns', JSON.stringify(newTxns));
-      return newTxns;
-    });
+    try {
+      const res = await claimSession(claimPayload);
+      if (res && res.transaction) {
+        setTransactions(prev => {
+          const newTxns = [...prev, res.transaction];
+          safeSetItem('kw_txns', JSON.stringify(newTxns));
+          return newTxns;
+        });
 
-    setActiveSessions(prev => {
-      let newSessions;
-      if (remainingItems.length > 0) {
-        newSessions = prev.map(s => s.id === session.id ? { ...s, items: remainingItems } : s);
-      } else {
-        newSessions = prev.filter(s => s.id !== session.id);
-      }
-      safeSetItem('kw_sessions', JSON.stringify(newSessions));
-      return newSessions;
-    });
+        setActiveSessions(prev => {
+          let newSessions;
+          if (remainingItems.length > 0) {
+            newSessions = prev.map(s => s.id === session.id ? { ...s, items: remainingItems } : s);
+          } else {
+            newSessions = prev.filter(s => s.id !== session.id);
+          }
+          safeSetItem('kw_sessions', JSON.stringify(newSessions));
+          return newSessions;
+        });
 
-    if (printSelesai) {
-      handlePrintSelesai(txn);
-    }
-
-    if (sbConnected) {
-      // Session already deleted/updated by claim_and_update_session above — upsert txn to avoid duplicates/conflicts
-      const rows = formatTxnForSupabase([txn]);
-      sb.from('transactions').upsert(rows).then(({ error }) => {
-        if (error) console.error('Supabase upsert txn error:', error);
-        else {
-          console.log('Transaction logged to Supabase, no:', txn.no);
-          setTransactions(prev => {
-            const next = prev.map(x => x.id === txn.id ? { ...x, _synced: true } : x);
-            safeSetItem('kw_txns', JSON.stringify(next));
-            return next;
-          });
+        if (printSelesai) {
+          handlePrintSelesai(res.transaction);
         }
-      });
-    } else {
-      // Offline: session already updated/deleted locally — no DB action
-      console.warn('Offline: transaction saved to localStorage only');
+      }
+    } catch (e) {
+      console.error('Failed to finalize payment:', e);
+      alert('Gagal memproses pembayaran. Periksa koneksi internet.');
+    } finally {
+      setActivePaymentData(null);
     }
-
-    setActivePaymentData(null);
   };
 
   const todayStr = () => {
@@ -977,42 +471,22 @@ function App() {
   const handleUpdateAdminPassword = (newPass) => {
     setAdminPassword(newPass);
     localStorage.setItem('kw_pass', newPass);
-    if (sbConnected) {
-      sb.from('settings').upsert({ key: 'adminPassword', value: newPass }).then(() => {
-        console.log('Admin password saved to Supabase');
-      });
-    }
   };
 
   const handleThemeChange = (newTheme) => {
     setTheme(newTheme);
     localStorage.setItem('kw_theme', newTheme);
     document.documentElement.setAttribute('data-theme', newTheme);
-    if (sbConnected) {
-      sb.from('settings').upsert({ key: 'theme', value: newTheme }).then(() => {
-        console.log('Theme setting saved to Supabase');
-      });
-    }
   };
 
   const handlePrintMulaiToggle = (val) => {
     setPrintMulai(val);
     localStorage.setItem('kw_printMulai', String(val));
-    if (sbConnected) {
-      sb.from('settings').upsert({ key: 'printMulai', value: String(val) }).then(() => {
-        console.log('printMulai setting saved to Supabase');
-      });
-    }
   };
 
   const handlePrintSelesaiToggle = (val) => {
     setPrintSelesai(val);
     localStorage.setItem('kw_printSelesai', String(val));
-    if (sbConnected) {
-      sb.from('settings').upsert({ key: 'printSelesai', value: String(val) }).then(() => {
-        console.log('printSelesai setting saved to Supabase');
-      });
-    }
   };
 
   if (!currentUserRole) {
@@ -1074,40 +548,33 @@ function App() {
                 </ul>
               </div>
 
-              {/* Status Badge & Auto Push Refresh */}
+              {/* Status Badge & Refresh */}
               <div className="d-flex align-items-center gap-2">
-                <div title={`Realtime: ${realtimeStatus}`} style={{
+                <div title={`API Connection: ${apiConnected ? 'Online' : 'Offline'}`} style={{
                   display: 'flex', alignItems: 'center', gap: '4px',
                   fontSize: '.65rem', fontWeight: 700, letterSpacing: '.5px',
                   padding: '3px 6px', borderRadius: '4px', cursor: 'default',
-                  background: realtimeStatus === 'SUBSCRIBED'
-                    ? 'rgba(63,185,80,.15)' : realtimeStatus === 'CONNECTING'
-                    ? 'rgba(227,179,65,.15)' : 'rgba(249,115,22,.15)',
-                  color: realtimeStatus === 'SUBSCRIBED'
-                    ? 'var(--green)' : realtimeStatus === 'CONNECTING'
-                    ? 'var(--yellow)' : 'var(--orange)',
+                  background: apiConnected
+                    ? 'rgba(63,185,80,.15)' : 'rgba(249,115,22,.15)',
+                  color: apiConnected
+                    ? 'var(--green)' : 'var(--orange)',
                 }}>
                   <span style={{
                     width: 6, height: 6, borderRadius: '50%', display: 'inline-block',
                     background: 'currentColor',
-                    animation: realtimeStatus === 'SUBSCRIBED' ? 'none' : 'pulse 1.2s infinite',
+                    animation: isSyncing ? 'pulse 1.2s infinite' : 'none',
                   }}/>
                   <span className="d-none d-sm-inline">
-                    {realtimeStatus === 'SUBSCRIBED' ? 'LIVE' : realtimeStatus === 'CONNECTING' ? 'SYNC…' : 'OFFLINE'}
+                    {isSyncing ? 'SYNC…' : apiConnected ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
 
                 <button
                   className="bg-transparent border-0 text-secondary p-1 d-flex align-items-center justify-content-center"
-                  title="Refresh & Auto Push Data ke Cloud"
-                  onClick={() => {
-                    handleSyncPull();
-                    if (sbConnected) {
-                      handleSyncPush();
-                    }
-                  }}
+                  title="Refresh Data dari Server"
+                  onClick={loadData}
                   style={{ cursor: 'pointer', fontSize: '1.1rem', color: 'var(--cyan)' }}
-                  aria-label="Refresh & Auto Push ke Cloud"
+                  aria-label="Refresh Data dari Server"
                 >
                   <i className="bi bi-arrow-repeat clr-cyan" style={{ transition: 'transform 0.3s ease' }}></i>
                 </button>
@@ -1146,11 +613,6 @@ function App() {
                     safeSetItem('kw_txns', JSON.stringify(updated));
                     return updated;
                   });
-                  if (sbConnected) {
-                    sb.from('transactions').delete().eq('id', id).then(() => {
-                      console.log('Deleted transaction from Supabase');
-                    });
-                  }
                 }
               } else {
                 setPendingAction({ type: 'deleteTxn', id });
@@ -1171,16 +633,22 @@ function App() {
             onThemeChange={handleThemeChange}
             adminPassword={adminPassword}
             onUpdateAdminPassword={handleUpdateAdminPassword}
-            sbConnected={sbConnected}
+            sbConnected={apiConnected}
             lastSyncTime={lastSyncTime}
-            onSyncPull={handleSyncPull}
-            onSyncPush={handleSyncPush}
+            onSyncPull={loadData}
+            onSyncPush={loadData}
             printMulai={printMulai}
             onChangePrintMulai={handlePrintMulaiToggle}
             printSelesai={printSelesai}
             onChangePrintSelesai={handlePrintSelesaiToggle}
-            onUpdateItemImg={handleUpdateItemImg}
-            onResetItemImg={handleResetItemImg}
+            onUpdateItemImg={(code, url) => {
+              localStorage.setItem('kw_img_' + code, url);
+              setImageUpdateTrigger(prev => prev + 1);
+            }}
+            onResetItemImg={(code) => {
+              localStorage.removeItem('kw_img_' + code);
+              setImageUpdateTrigger(prev => prev + 1);
+            }}
             getImgUrl={getImgUrl}
           />
         )}
