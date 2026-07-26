@@ -233,8 +233,6 @@ function parseDateTimeToTimestamp(tanggalVal, timeVal) {
   let d = new Date(`${shiftTglStr} ${timeStr}`);
   if (isNaN(d.getTime())) return Date.now();
   
-  // Deterministic 6 AM Shift Rule: If time is between 00:00:00 and 05:59:59 AM,
-  // the calendar date is shiftTgl + 1 day.
   const parts = timeStr.split(':');
   const hh = Number(parts[0] || 0);
   if (hh < 6) {
