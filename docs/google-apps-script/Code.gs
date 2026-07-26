@@ -9,6 +9,7 @@ try {
 const SHEET_SESSIONS = 'ActiveSessions';
 const SHEET_TRANSACTIONS = 'Transactions';
 const SHEET_SETTINGS = 'Settings';
+const SHEET_USERS = 'Users';
 
 function doGet(e) {
   return fetchAllData();
@@ -35,6 +36,10 @@ function doPost(e) {
         return claimSession(payload);
       case 'delete_session':
         return deleteSession(payload);
+      case 'save_setting':
+        return saveSetting(payload);
+      case 'save_user':
+        return saveUser(payload);
       default:
         return respond({ error: 'Invalid action: ' + action });
     }
@@ -64,13 +69,120 @@ function fetchAllData() {
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sessSheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal']);
   const txnSheet = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id', 'no', 'queue_no', 'nama', 'tanggal', 'start_time', 'end_time', 'items', 'ot', 'ot_dur', 'total_base', 'total_ot', 'total_tol', 'grand_total', 'total_all', 'pay_awal', 'cash', 'qris', 'shift']);
+  const usersSheet = getOrCreateSheet(ss, SHEET_USERS, ['username', 'password', 'role']);
+  const settingsSheet = getOrCreateSheet(ss, SHEET_SETTINGS, ['Key', 'Value']);
+
+  // Populate default Users if empty
+  if (usersSheet.getLastRow() <= 1) {
+    const defaultUsers = [
+      ['akbar', 'jayalahevren', 'cashier'],
+      ['rani', 'jayalahevren', 'cashier'],
+      ['monica', 'jayalahevren', 'cashier'],
+      ['aldy', 'jayalahevren', 'cashier'],
+      ['wahyu', 'jayalahevren', 'cashier'],
+      ['donny', 'jayalahevren', 'cashier'],
+      ['zumi', 'jayalahevren', 'cashier'],
+      ['awang', 'jayalahevren', 'cashier'],
+      ['admin', 'jayalahevren', 'admin']
+    ];
+    defaultUsers.forEach(u => usersSheet.appendRow(u));
+  }
+
+  // Populate default Settings if empty
+  if (settingsSheet.getLastRow() <= 1) {
+    const defaultSettings = [
+      ['admin_password', 'jayalahevren'],
+      ['store_name', 'EVREN HOUSE'],
+      ['store_sub', 'Scooter & Stroller']
+    ];
+    defaultSettings.forEach(s => settingsSheet.appendRow(s));
+  }
 
   const sessions = parseSheetRows(sessSheet);
   const transactions = parseSheetRows(txnSheet);
+  const users = parseUsers(usersSheet);
+  const settings = parseSettings(settingsSheet);
 
-  const responseData = { sessions, transactions, serverTime: Date.now() };
+  const responseData = { sessions, transactions, users, settings, serverTime: Date.now() };
   cache.put('allData', JSON.stringify(responseData), 4);
   return respond(responseData);
+}
+
+function parseUsers(sheet) {
+  const rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1) return [];
+  return rows.slice(1).map(r => ({
+    username: String(r[0]),
+    password: String(r[1]),
+    role: String(r[2] || 'cashier')
+  }));
+}
+
+function parseSettings(sheet) {
+  const rows = sheet.getDataRange().getValues();
+  if (rows.length <= 1) return {};
+  const settings = {};
+  rows.slice(1).forEach(r => {
+    if (r[0]) settings[String(r[0])] = String(r[1] || '');
+  });
+  return settings;
+}
+
+function saveSetting(payload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = getOrCreateSheet(ss, SHEET_SETTINGS, ['Key', 'Value']);
+    const data = sheet.getDataRange().getValues();
+    let found = false;
+    
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]) === String(payload.key)) {
+        sheet.getRange(i + 1, 2).setValue(payload.value);
+        found = true;
+        break;
+      }
+    }
+    
+    if (!found && payload.key) {
+      sheet.appendRow([payload.key, payload.value]);
+    }
+    
+    CacheService.getScriptCache().remove('allData');
+    return respond({ success: true });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function saveUser(payload) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = getOrCreateSheet(ss, SHEET_USERS, ['username', 'password', 'role']);
+    const data = sheet.getDataRange().getValues();
+    let found = false;
+    
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).toLowerCase() === String(payload.username).toLowerCase()) {
+        if (payload.password) sheet.getRange(i + 1, 2).setValue(payload.password);
+        if (payload.role) sheet.getRange(i + 1, 3).setValue(payload.role);
+        found = true;
+        break;
+      }
+    }
+    
+    if (!found && payload.username) {
+      sheet.appendRow([payload.username, payload.password || '1234', payload.role || 'cashier']);
+    }
+    
+    CacheService.getScriptCache().remove('allData');
+    return respond({ success: true });
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function generateShortId(prefix) {

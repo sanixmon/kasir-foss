@@ -40,3 +40,5 @@ export const addSession = (data) => apiCall('add_session', data);
 export const editSession = (data) => apiCall('edit_session', data);
 export const claimSession = (data) => apiCall('claim_session', data);
 export const deleteSession = (id) => apiCall('delete_session', { id });
+export const saveSetting = (key, value) => apiCall('save_setting', { key, value });
+export const saveUser = (username, password, role) => apiCall('save_user', { username, password, role });
