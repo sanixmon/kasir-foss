@@ -50,7 +50,7 @@ describe('calcOT — standard 1h limit', () => {
   });
 });
 
-describe('calcOT — package 3h limit (ST3)', () => {
+describe('calcOT — package 3h limit (SB)', () => {
   const limitMin = 180;
 
   it('no OT within 3h', () => {
