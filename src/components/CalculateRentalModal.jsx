@@ -4,7 +4,8 @@ import { calcOT } from '../lib/ot';
 
 function CalculateRentalModal({ session, onClose, onProceedPayment }) {
   // Guard: if startTime is 0 / epoch 1970 (backend NaN bug), default to now
-  const safeStart = (session.startTime && session.startTime > Date.now() - 12 * 60 * 60 * 1000)
+  // Only clamp if before year 2020 — old-but-valid sessions are still valid
+  const safeStart = (session.startTime && session.startTime > 1577836800000)
     ? session.startTime
     : Date.now();
   const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - safeStart) / 1000));
@@ -13,7 +14,7 @@ function CalculateRentalModal({ session, onClose, onProceedPayment }) {
   const [manualAdj, setManualAdj] = useState(0);
 
   useEffect(() => {
-    const safeStart = (session.startTime && session.startTime > Date.now() - 12 * 60 * 60 * 1000)
+    const safeStart = (session.startTime && session.startTime > 1577836800000)
       ? session.startTime
       : Date.now();
     const el = Math.floor((Date.now() - safeStart) / 1000);
