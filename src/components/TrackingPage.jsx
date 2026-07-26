@@ -204,7 +204,9 @@ function TrackingPage({ trackingId }) {
   }
 
   // --- Render Active Session ---
-  const elapsedSec = Math.floor((now - session.startTime) / 1000);
+  const safeStart = (session.startTime && session.startTime > now - 12 * 60 * 60 * 1000)
+    ? session.startTime : now;
+  const elapsedSec = Math.max(0, Math.floor((now - safeStart) / 1000));
   const elapsedMin = elapsedSec / 60;
   
   // Calculate OT status

@@ -13,8 +13,10 @@ function DashboardTab({ activeSessions, onStartSewa, getImgUrl, onSelesaiSewa, o
     const updateTimers = () => {
       const updated = {};
       activeSessions.forEach(s => {
-        const sec = Math.floor((Date.now() - s.startTime) / 1000);
-        updated[s.id] = sec;
+        const safeStart = (s.startTime && s.startTime > Date.now() - 12 * 60 * 60 * 1000)
+          ? s.startTime : Date.now();
+        const sec = Math.floor((Date.now() - safeStart) / 1000);
+        updated[s.id] = Math.max(0, sec);
       });
       setSessionDurations(updated);
     };
