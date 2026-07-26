@@ -1,10 +1,9 @@
-let SPREADSHEET_ID = '';
+let SPREADSHEET_ID = '1WEFm1wjTdFXedMPyKw521COQCKjj5PQxPvHAITiCczI';
 try {
-  SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
+  const activeId = SpreadsheetApp.getActiveSpreadsheet().getId();
+  if (activeId) SPREADSHEET_ID = activeId;
 } catch (e) {
-  // Jika Apps Script dibuat terpisah via script.google.com (Standalone Script),
-  // masukkan Spreadsheet ID Anda di bawah ini (diambil dari URL Spreadsheet antara /d/ dan /edit):
-  SPREADSHEET_ID = 'MASUKKAN_SPREADSHEET_ID_DISINI';
+  // Menggunakan Spreadsheet ID yang disediakan user jika Standalone Script
 }
 
 const SHEET_SESSIONS = 'ActiveSessions';
@@ -17,7 +16,11 @@ function doGet(e) {
 
 function doPost(e) {
   try {
-    const data = JSON.parse(e.postData.contents || '{}');
+    let contents = '{}';
+    if (e && e.postData && e.postData.contents) {
+      contents = e.postData.contents;
+    }
+    const data = JSON.parse(contents);
     const action = data.action;
     const payload = data.payload || {};
 
@@ -36,8 +39,19 @@ function doPost(e) {
         return respond({ error: 'Invalid action: ' + action });
     }
   } catch (err) {
-    return respond({ error: err.message });
+    return respond({ error: String(err && err.message ? err.message : err) });
   }
+}
+
+function getOrCreateSheet(ss, name, defaultHeaders) {
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    if (defaultHeaders && defaultHeaders.length > 0) {
+      sheet.appendRow(defaultHeaders);
+    }
+  }
+  return sheet;
 }
 
 function fetchAllData() {
@@ -48,11 +62,11 @@ function fetchAllData() {
   }
 
   const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sessSheet = ss.getSheetByName(SHEET_SESSIONS);
-  const txnSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
+  const sessSheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
+  const txnSheet = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id', 'no', 'queue_no', 'nama', 'tanggal', 'start_time', 'end_time', 'items', 'ot', 'ot_dur', 'total_base', 'total_ot', 'total_tol', 'grand_total', 'total_all', 'pay_awal', 'cash', 'qris', 'shift']);
 
-  const sessions = sessSheet ? parseSheetRows(sessSheet) : [];
-  const transactions = txnSheet ? parseSheetRows(txnSheet) : [];
+  const sessions = parseSheetRows(sessSheet);
+  const transactions = parseSheetRows(txnSheet);
 
   const responseData = { sessions, transactions, serverTime: Date.now() };
   cache.put('allData', JSON.stringify(responseData), 4);
@@ -89,9 +103,26 @@ function parseTimestamp(val) {
   return Date.now();
 }
 
+function formatTanggal(val) {
+  if (!val) return new Date().toISOString().slice(0, 10);
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(val).slice(0, 10);
+}
+
 function formatItemsSummary(items) {
   if (!items) return '-';
-  if (typeof items === 'string') return items;
+  if (typeof items === 'string') {
+    try {
+      const parsed = JSON.parse(items);
+      if (Array.isArray(parsed)) return parsed.map(i => `${i.code}×${i.qty}`).join(', ');
+    } catch (e) {}
+    return items;
+  }
   if (Array.isArray(items)) {
     return items.map(i => `${i.code}×${i.qty}`).join(', ');
   }
@@ -118,35 +149,27 @@ function parseItems(val) {
   return [];
 }
 
-function formatTanggal(val) {
-  if (!val) return new Date().toISOString().slice(0, 10);
-  if (val instanceof Date) {
-    const y = val.getFullYear();
-    const m = String(val.getMonth() + 1).padStart(2, '0');
-    const d = String(val.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-  return String(val).slice(0, 10);
-}
-
 function addSession(payload) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = ss.getSheetByName(SHEET_SESSIONS);
+    const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
     
     const today = payload.tanggal || new Date().toISOString().slice(0, 10);
-    const rows = sheet.getDataRange().getValues().slice(1);
+    const lastRow = sheet.getLastRow();
+    const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 8).getValues() : [];
     const todayRows = rows.filter(r => String(r[4]).slice(0, 10) === today);
     const queueNo = todayRows.length + 1;
     
     const id = payload.id || generateShortId('s');
     const startTimeMs = payload.startTime || Date.now();
+    const itemsSummary = formatItemsSummary(payload.items || []);
+    
     const newRow = [
       id,
       payload.nama || 'Penyewa',
-      formatItemsSummary(payload.items || []),
+      itemsSummary,
       formatDateTime(startTimeMs),
       today,
       queueNo,
@@ -167,13 +190,15 @@ function editSession(payload) {
   lock.waitLock(10000);
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = ss.getSheetByName(SHEET_SESSIONS);
+    const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
     const data = sheet.getDataRange().getValues();
     
     for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === payload.id) {
+      if (String(data[i][0]) === String(payload.id)) {
         if (payload.nama !== undefined) sheet.getRange(i + 1, 2).setValue(payload.nama);
-        if (payload.items !== undefined) sheet.getRange(i + 1, 3).setValue(formatItemsSummary(payload.items));
+        if (payload.items !== undefined) {
+          sheet.getRange(i + 1, 3).setValue(formatItemsSummary(payload.items));
+        }
         if (payload.payAwal !== undefined) sheet.getRange(i + 1, 7).setValue(payload.payAwal);
         break;
       }
@@ -191,13 +216,13 @@ function claimSession(payload) {
   lock.waitLock(10000);
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sessSheet = ss.getSheetByName(SHEET_SESSIONS);
-    const txnSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
+    const sessSheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
+    const txnSheet = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id', 'no', 'queue_no', 'nama', 'tanggal', 'start_time', 'end_time', 'items', 'ot', 'ot_dur', 'total_base', 'total_ot', 'total_tol', 'grand_total', 'total_all', 'pay_awal', 'cash', 'qris', 'shift']);
     
     if (payload.sessionId) {
       const sessData = sessSheet.getDataRange().getValues();
       for (let i = 1; i < sessData.length; i++) {
-        if (sessData[i][0] === payload.sessionId) {
+        if (String(sessData[i][0]) === String(payload.sessionId)) {
           sessSheet.deleteRow(i + 1);
           break;
         }
@@ -210,6 +235,8 @@ function claimSession(payload) {
     const txnId = payload.id || generateShortId('t');
     const startTimeMs = payload.startTime || Date.now();
     const endTimeMs = payload.endTime || Date.now();
+    const itemsSummary = formatItemsSummary(payload.items || []);
+    
     const txnRow = [
       txnId,
       nextNo,
@@ -218,7 +245,7 @@ function claimSession(payload) {
       payload.tanggal || new Date().toISOString().slice(0, 10),
       formatDateTime(startTimeMs),
       formatDateTime(endTimeMs),
-      formatItemsSummary(payload.items || []),
+      itemsSummary,
       payload.ot || '-',
       payload.otDur || '-',
       payload.totalBase || 0,
@@ -245,11 +272,11 @@ function deleteSession(payload) {
   lock.waitLock(10000);
   try {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    const sheet = ss.getSheetByName(SHEET_SESSIONS);
+    const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal', 'created_at']);
     const data = sheet.getDataRange().getValues();
     
     for (let i = 1; i < data.length; i++) {
-      if (data[i][0] === payload.id) {
+      if (String(data[i][0]) === String(payload.id)) {
         sheet.deleteRow(i + 1);
         break;
       }
@@ -293,7 +320,7 @@ function rowToTxnObj(r) {
     tanggal: formatTanggal(r[4]),
     startTime: parseTimestamp(r[5]),
     endTime: parseTimestamp(r[6]),
-    items: typeof r[7] === 'string' ? r[7] : formatItemsSummary(r[7]),
+    items: parseItems(r[7]),
     ot: String(r[8] || '-'),
     otDur: String(r[9] || '-'),
     totalBase: Number(r[10] || 0),
