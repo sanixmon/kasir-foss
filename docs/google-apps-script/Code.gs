@@ -149,12 +149,23 @@ function formatTanggal(val) {
  * (because the shift started before midnight of the next day).
  */
 function parseDateTimeToTimestamp(tanggalVal, timeVal) {
-  // Already a full Unix timestamp
+  // Already a full Unix timestamp (modern, positive)
   if (typeof timeVal === 'number' && timeVal > 1000000000000) return timeVal;
-  if (timeVal instanceof Date && !isNaN(timeVal.getTime())) return timeVal.getTime();
 
-  var timeStr     = formatTimeOnly(timeVal);          // always HH:mm:ss
-  var shiftTglStr = formatTanggal(tanggalVal);        // always YYYY-MM-DD
+  // Google Sheets stores time-only cells as Date objects anchored to 1899-12-30.
+  // NEVER use .getTime() on them — it returns a negative (1899) timestamp.
+  // Instead, extract only the H:mm:ss components and combine with shift date.
+  if (timeVal instanceof Date && !isNaN(timeVal.getTime())) {
+    var timeStr2 = pad2(timeVal.getHours()) + ':' + pad2(timeVal.getMinutes()) + ':' + pad2(timeVal.getSeconds());
+    var shiftTglStr2 = formatTanggal(tanggalVal);
+    var d2 = new Date(shiftTglStr2 + 'T' + timeStr2);
+    if (isNaN(d2.getTime())) return Date.now();
+    if (timeVal.getHours() < 6) d2.setDate(d2.getDate() + 1);
+    return d2.getTime();
+  }
+
+  var timeStr     = formatTimeOnly(timeVal);   // always HH:mm:ss
+  var shiftTglStr = formatTanggal(tanggalVal); // always YYYY-MM-DD
 
   // Use ISO 8601 "T" separator for guaranteed parsing in V8 / Apps Script engine
   var d = new Date(shiftTglStr + 'T' + timeStr);
@@ -162,9 +173,7 @@ function parseDateTimeToTimestamp(tanggalVal, timeVal) {
 
   // Deterministic 6 AM shift rule
   var hh = Number(timeStr.split(':')[0] || 0);
-  if (hh < 6) {
-    d.setDate(d.getDate() + 1);
-  }
+  if (hh < 6) d.setDate(d.getDate() + 1);
 
   return d.getTime();
 }

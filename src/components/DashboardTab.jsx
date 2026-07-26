@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ITEMS, fmtRp, fmtDur } from '../App';
 
 function DashboardTab({ activeSessions, onStartSewa, getImgUrl, onSelesaiSewa, onShowQR, onPrintSesi, onEditSesi }) {
@@ -7,15 +7,28 @@ function DashboardTab({ activeSessions, onStartSewa, getImgUrl, onSelesaiSewa, o
   const [selectedQty, setSelectedQty] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [sessionDurations, setSessionDurations] = useState({});
+  // Stores the effective start time per session ID — set once, never reset
+  const startTimesRef = useRef({});
 
-  // Live counter update loop
+  // When sessions change, record effective start time once per session
+  useEffect(() => {
+    activeSessions.forEach(s => {
+      if (!startTimesRef.current[s.id]) {
+        // Valid = positive timestamp after year 2020. Negative = Sheets 1899 epoch bug.
+        startTimesRef.current[s.id] = (s.startTime && s.startTime > 1577836800000)
+          ? s.startTime
+          : Date.now();
+      }
+    });
+  }, [activeSessions]);
+
+  // Live counter — reads from ref so safeStart never resets each tick
   useEffect(() => {
     const updateTimers = () => {
       const updated = {};
       activeSessions.forEach(s => {
-        const safeStart = (s.startTime && s.startTime > 1577836800000)
-          ? s.startTime : Date.now();
-        const sec = Math.floor((Date.now() - safeStart) / 1000);
+        const start = startTimesRef.current[s.id] || Date.now();
+        const sec = Math.floor((Date.now() - start) / 1000);
         updated[s.id] = Math.max(0, sec);
       });
       setSessionDurations(updated);
