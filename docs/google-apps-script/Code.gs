@@ -189,13 +189,24 @@ function generateShortId(prefix) {
 
 function formatTimeOnly(val) {
   if (!val) return '';
-  if (typeof val === 'string' && val.indexOf(':') !== -1 && val.length <= 8) return val;
-  const d = (typeof val === 'number') ? new Date(val) : new Date(String(val));
-  if (isNaN(d.getTime())) return String(val);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${hh}:${mm}:${ss}`;
+  if (typeof val === 'number') {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return '00:00:00';
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+  }
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '00:00:00';
+    return `${String(val.getHours()).padStart(2,'0')}:${String(val.getMinutes()).padStart(2,'0')}:${String(val.getSeconds()).padStart(2,'0')}`;
+  }
+  // Normalize string like '0:41:14' or '0:41' to always HH:mm:ss
+  if (typeof val === 'string' && val.indexOf(':') !== -1) {
+    const parts = val.split(':');
+    const hh = String(Number(parts[0] || 0)).padStart(2, '0');
+    const mm = String(Number(parts[1] || 0)).padStart(2, '0');
+    const ss = String(Number(parts[2] || 0)).padStart(2, '0');
+    return `${hh}:${mm}:${ss}`;
+  }
+  return '00:00:00';
 }
 
 function getShiftDate(ms) {
@@ -230,9 +241,12 @@ function parseDateTimeToTimestamp(tanggalVal, timeVal) {
   const timeStr = formatTimeOnly(timeVal) || '00:00:00';
   const shiftTglStr = formatTanggal(tanggalVal);
   
-  let d = new Date(`${shiftTglStr} ${timeStr}`);
+  // Use T separator for reliable ISO 8601 parsing across all JS engines
+  let d = new Date(`${shiftTglStr}T${timeStr}`);
   if (isNaN(d.getTime())) return Date.now();
   
+  // Deterministic 6 AM shift rule:
+  // Times 00:00:00–05:59:59 belong to the NEXT calendar day
   const parts = timeStr.split(':');
   const hh = Number(parts[0] || 0);
   if (hh < 6) {
