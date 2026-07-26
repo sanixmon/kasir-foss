@@ -4,7 +4,7 @@ try {
 } catch (e) {
   // Jika Apps Script dibuat terpisah via script.google.com (Standalone Script),
   // masukkan Spreadsheet ID Anda di bawah ini (diambil dari URL Spreadsheet antara /d/ dan /edit):
-  SPREADSHEET_ID = '1WEFm1wjTdFXedMPyKw521COQCKjj5PQxPvHAITiCczI';
+  SPREADSHEET_ID = 'MASUKKAN_SPREADSHEET_ID_DISINI';
 }
 
 const SHEET_SESSIONS = 'ActiveSessions';
@@ -63,6 +63,72 @@ function generateShortId(prefix) {
   return prefix + '-' + Math.random().toString(36).substring(2, 8);
 }
 
+function formatDateTime(val) {
+  if (!val) return '';
+  const d = (typeof val === 'number') ? new Date(val) : new Date(String(val));
+  if (isNaN(d.getTime())) return String(val);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const date = String(d.getDate()).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  const ss = String(d.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${date} ${hh}:${mm}:${ss}`;
+}
+
+function parseTimestamp(val) {
+  if (!val) return Date.now();
+  if (typeof val === 'number') return val;
+  if (val instanceof Date) return val.getTime();
+  if (typeof val === 'string') {
+    const num = Number(val);
+    if (!isNaN(num) && num > 0) return num;
+    const parsed = Date.parse(val);
+    if (!isNaN(parsed)) return parsed;
+  }
+  return Date.now();
+}
+
+function formatItemsSummary(items) {
+  if (!items) return '-';
+  if (typeof items === 'string') return items;
+  if (Array.isArray(items)) {
+    return items.map(i => `${i.code}×${i.qty}`).join(', ');
+  }
+  return String(items);
+}
+
+function parseItems(val) {
+  if (!val) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      if (Array.isArray(parsed)) return parsed;
+    } catch (e) {}
+    return val.split(',').map(part => {
+      const p = part.trim();
+      const match = p.match(/^(.+?)(?:[x×](\d+))?$/i);
+      if (match) {
+        return { code: match[1].trim(), qty: Number(match[2] || 1) };
+      }
+      return { code: p, qty: 1 };
+    });
+  }
+  return [];
+}
+
+function formatTanggal(val) {
+  if (!val) return new Date().toISOString().slice(0, 10);
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return String(val).slice(0, 10);
+}
+
 function addSession(payload) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -76,15 +142,16 @@ function addSession(payload) {
     const queueNo = todayRows.length + 1;
     
     const id = payload.id || generateShortId('s');
+    const startTimeMs = payload.startTime || Date.now();
     const newRow = [
       id,
       payload.nama || 'Penyewa',
-      JSON.stringify(payload.items || []),
-      payload.startTime || Date.now(),
+      formatItemsSummary(payload.items || []),
+      formatDateTime(startTimeMs),
       today,
       queueNo,
       payload.payAwal || 'cash',
-      new Date().toISOString()
+      formatDateTime(Date.now())
     ];
     
     sheet.appendRow(newRow);
@@ -106,7 +173,7 @@ function editSession(payload) {
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] === payload.id) {
         if (payload.nama !== undefined) sheet.getRange(i + 1, 2).setValue(payload.nama);
-        if (payload.items !== undefined) sheet.getRange(i + 1, 3).setValue(JSON.stringify(payload.items));
+        if (payload.items !== undefined) sheet.getRange(i + 1, 3).setValue(formatItemsSummary(payload.items));
         if (payload.payAwal !== undefined) sheet.getRange(i + 1, 7).setValue(payload.payAwal);
         break;
       }
@@ -141,15 +208,17 @@ function claimSession(payload) {
     const nextNo = txnRows > 1 ? Number(txnSheet.getRange(txnRows, 2).getValue()) + 1 : 1;
     
     const txnId = payload.id || generateShortId('t');
+    const startTimeMs = payload.startTime || Date.now();
+    const endTimeMs = payload.endTime || Date.now();
     const txnRow = [
       txnId,
       nextNo,
       payload.queueNo || 0,
       payload.nama || 'Penyewa',
       payload.tanggal || new Date().toISOString().slice(0, 10),
-      payload.startTime || Date.now(),
-      payload.endTime || Date.now(),
-      typeof payload.items === 'string' ? payload.items : JSON.stringify(payload.items || []),
+      formatDateTime(startTimeMs),
+      formatDateTime(endTimeMs),
+      formatItemsSummary(payload.items || []),
       payload.ot || '-',
       payload.otDur || '-',
       payload.totalBase || 0,
@@ -203,54 +272,39 @@ function parseSheetRows(sheet) {
   return [];
 }
 
-function formatTanggal(val) {
-  if (!val) return new Date().toISOString().slice(0, 10);
-  if (val instanceof Date) {
-    const y = val.getFullYear();
-    const m = String(val.getMonth() + 1).padStart(2, '0');
-    const d = String(val.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-  return String(val).slice(0, 10);
-}
-
 function rowToSessionObj(r) {
-  let items = [];
-  try { items = typeof r[2] === 'string' ? JSON.parse(r[2]) : r[2]; } catch (e) {}
   return {
-    id: r[0],
-    nama: r[1],
-    items: items,
-    startTime: Number(r[3]),
+    id: String(r[0]),
+    nama: String(r[1]),
+    items: parseItems(r[2]),
+    startTime: parseTimestamp(r[3]),
     tanggal: formatTanggal(r[4]),
-    queueNo: Number(r[5]),
-    payAwal: r[6]
+    queueNo: Number(r[5] || 0),
+    payAwal: String(r[6] || 'cash')
   };
 }
 
 function rowToTxnObj(r) {
-  let items = [];
-  try { items = typeof r[7] === 'string' ? JSON.parse(r[7]) : r[7]; } catch (e) {}
   return {
-    id: r[0],
-    no: Number(r[1]),
-    queueNo: Number(r[2]),
-    nama: r[3],
+    id: String(r[0]),
+    no: Number(r[1] || 0),
+    queueNo: Number(r[2] || 0),
+    nama: String(r[3]),
     tanggal: formatTanggal(r[4]),
-    startTime: Number(r[5]),
-    endTime: Number(r[6]),
-    items: items,
-    ot: r[8],
-    otDur: r[9],
-    totalBase: Number(r[10]),
-    totalOT: Number(r[11]),
-    totalTol: Number(r[12]),
-    grandTotal: Number(r[13]),
-    totalAll: Number(r[14]),
-    payAwal: r[15],
-    cash: Number(r[16]),
-    qris: Number(r[17]),
-    shift: r[18]
+    startTime: parseTimestamp(r[5]),
+    endTime: parseTimestamp(r[6]),
+    items: typeof r[7] === 'string' ? r[7] : formatItemsSummary(r[7]),
+    ot: String(r[8] || '-'),
+    otDur: String(r[9] || '-'),
+    totalBase: Number(r[10] || 0),
+    totalOT: Number(r[11] || 0),
+    totalTol: Number(r[12] || 0),
+    grandTotal: Number(r[13] || 0),
+    totalAll: Number(r[14] || 0),
+    payAwal: String(r[15] || 'cash'),
+    cash: Number(r[16] || 0),
+    qris: Number(r[17] || 0),
+    shift: String(r[18] || '-')
   };
 }
 
