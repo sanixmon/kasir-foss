@@ -25,6 +25,7 @@ export const ITEMS = [
 ];
 
 export const fmtRp = n => n ? 'Rp ' + Math.round(n).toLocaleString('id-ID') : 'Rp 0';
+export const generateShortId = (prefix = 's') => `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
 export const fmtDur = s => {
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
@@ -321,7 +322,7 @@ function App() {
   const handleStartSewa = async (nama, items, payAwal) => {
     const today = todayStr();
     const sessionData = {
-      id: crypto.randomUUID(),
+      id: generateShortId('s'),
       nama,
       items,
       startTime: Date.now(),

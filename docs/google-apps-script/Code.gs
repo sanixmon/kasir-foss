@@ -59,6 +59,10 @@ function fetchAllData() {
   return respond(responseData);
 }
 
+function generateShortId(prefix) {
+  return prefix + '-' + Math.random().toString(36).substring(2, 8);
+}
+
 function addSession(payload) {
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -71,7 +75,7 @@ function addSession(payload) {
     const todayRows = rows.filter(r => String(r[4]).slice(0, 10) === today);
     const queueNo = todayRows.length + 1;
     
-    const id = payload.id || Utilities.getUuid();
+    const id = payload.id || generateShortId('s');
     const newRow = [
       id,
       payload.nama || 'Penyewa',
@@ -136,7 +140,7 @@ function claimSession(payload) {
     const txnRows = txnSheet.getLastRow();
     const nextNo = txnRows > 1 ? Number(txnSheet.getRange(txnRows, 2).getValue()) + 1 : 1;
     
-    const txnId = payload.id || Utilities.getUuid();
+    const txnId = payload.id || generateShortId('t');
     const txnRow = [
       txnId,
       nextNo,
