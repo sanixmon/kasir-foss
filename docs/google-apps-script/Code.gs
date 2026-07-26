@@ -159,14 +159,15 @@ function addSession(payload) {
     const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
     const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal']);
     
-    const today = payload.tanggal || new Date().toISOString().slice(0, 10);
+    const startTimeMs = payload.startTime || Date.now();
+    const realDate = formatTanggal(startTimeMs);
+    
     const lastRow = sheet.getLastRow();
     const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 7).getValues() : [];
-    const todayRows = rows.filter(r => formatTanggal(r[4]) === today);
+    const todayRows = rows.filter(r => formatTanggal(r[4]) === realDate);
     const queueNo = todayRows.length + 1;
     
     const id = payload.id || generateShortId('s');
-    const startTimeMs = payload.startTime || Date.now();
     const itemsSummary = formatItemsSummary(payload.items || []);
     
     const newRow = [
@@ -174,7 +175,7 @@ function addSession(payload) {
       payload.nama || 'Penyewa',
       itemsSummary,
       formatTimeOnly(startTimeMs),
-      today,
+      realDate,
       queueNo,
       payload.payAwal || 'cash'
     ];
@@ -237,6 +238,7 @@ function claimSession(payload) {
     const txnId = payload.id || generateShortId('t');
     const startTimeMs = payload.startTime || Date.now();
     const endTimeMs = payload.endTime || Date.now();
+    const realDate = formatTanggal(startTimeMs);
     const itemsSummary = formatItemsSummary(payload.items || []);
     
     const txnRow = [
@@ -244,7 +246,7 @@ function claimSession(payload) {
       nextNo,
       payload.queueNo || 0,
       payload.nama || 'Penyewa',
-      payload.tanggal || formatTanggal(startTimeMs),
+      realDate,
       formatTimeOnly(startTimeMs),
       formatTimeOnly(endTimeMs),
       itemsSummary,
