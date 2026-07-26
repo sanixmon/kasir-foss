@@ -72,7 +72,6 @@ function fetchAllData() {
   const usersSheet = getOrCreateSheet(ss, SHEET_USERS, ['username', 'password', 'role']);
   const settingsSheet = getOrCreateSheet(ss, SHEET_SETTINGS, ['Key', 'Value']);
 
-  // Populate default Users if empty
   if (usersSheet.getLastRow() <= 1) {
     const defaultUsers = [
       ['akbar', 'jayalahevren', 'cashier'],
@@ -88,7 +87,6 @@ function fetchAllData() {
     defaultUsers.forEach(u => usersSheet.appendRow(u));
   }
 
-  // Populate default Settings if empty
   if (settingsSheet.getLastRow() <= 1) {
     const defaultSettings = [
       ['admin_password', 'jayalahevren'],
@@ -200,33 +198,44 @@ function formatTimeOnly(val) {
   return `${hh}:${mm}:${ss}`;
 }
 
-function formatTanggal(val) {
-  if (!val) return new Date().toISOString().slice(0, 10);
-  let d;
-  if (typeof val === 'number') {
-    d = new Date(val);
-  } else if (val instanceof Date) {
-    d = val;
-  } else {
-    const str = String(val);
-    if (str.length >= 10 && str.indexOf('-') === 4) return str.slice(0, 10);
-    d = new Date(str);
-  }
-  if (isNaN(d.getTime())) return new Date().toISOString().slice(0, 10);
+function getShiftDate(ms) {
+  const d = new Date(Number(ms || Date.now()));
+  d.setHours(d.getHours() - 6);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const date = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${date}`;
 }
 
+function formatTanggal(val) {
+  if (!val) return getShiftDate();
+  let d;
+  if (typeof val === 'number') {
+    return getShiftDate(val);
+  } else if (val instanceof Date) {
+    return getShiftDate(val.getTime());
+  } else {
+    const str = String(val);
+    if (str.length >= 10 && str.indexOf('-') === 4) return str.slice(0, 10);
+    d = new Date(str);
+  }
+  if (isNaN(d.getTime())) return getShiftDate();
+  return getShiftDate(d.getTime());
+}
+
 function parseDateTimeToTimestamp(tanggalVal, timeVal) {
   const tglStr = formatTanggal(tanggalVal);
   let timeStr = formatTimeOnly(timeVal);
   if (!timeStr) timeStr = '00:00:00';
-  const combinedStr = `${tglStr} ${timeStr}`;
-  const parsed = Date.parse(combinedStr);
-  if (!isNaN(parsed)) return parsed;
-  return Date.now();
+  
+  let d = new Date(`${tglStr} ${timeStr}`);
+  if (isNaN(d.getTime())) return Date.now();
+  
+  const hh = d.getHours();
+  if (hh < 6) {
+    d.setDate(d.getDate() + 1);
+  }
+  return d.getTime();
 }
 
 function formatItemsSummary(items) {
@@ -272,11 +281,11 @@ function addSession(payload) {
     const sheet = getOrCreateSheet(ss, SHEET_SESSIONS, ['id', 'nama', 'items', 'start_time', 'tanggal', 'queue_no', 'pay_awal']);
     
     const startTimeMs = payload.startTime || Date.now();
-    const realDate = formatTanggal(startTimeMs);
+    const shiftDate = payload.tanggal || getShiftDate(startTimeMs);
     
     const lastRow = sheet.getLastRow();
     const rows = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 7).getValues() : [];
-    const todayRows = rows.filter(r => formatTanggal(r[4]) === realDate);
+    const todayRows = rows.filter(r => formatTanggal(r[4]) === shiftDate);
     const queueNo = todayRows.length + 1;
     
     const id = payload.id || generateShortId('s');
@@ -287,7 +296,7 @@ function addSession(payload) {
       payload.nama || 'Penyewa',
       itemsSummary,
       formatTimeOnly(startTimeMs),
-      realDate,
+      shiftDate,
       queueNo,
       payload.payAwal || 'cash'
     ];
@@ -350,7 +359,7 @@ function claimSession(payload) {
     const txnId = payload.id || generateShortId('t');
     const startTimeMs = payload.startTime || Date.now();
     const endTimeMs = payload.endTime || Date.now();
-    const realDate = formatTanggal(startTimeMs);
+    const shiftDate = payload.tanggal || getShiftDate(startTimeMs);
     const itemsSummary = formatItemsSummary(payload.items || []);
     
     const txnRow = [
@@ -358,7 +367,7 @@ function claimSession(payload) {
       nextNo,
       payload.queueNo || 0,
       payload.nama || 'Penyewa',
-      realDate,
+      shiftDate,
       formatTimeOnly(startTimeMs),
       formatTimeOnly(endTimeMs),
       itemsSummary,
