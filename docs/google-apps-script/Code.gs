@@ -102,7 +102,7 @@ function fetchAllData() {
   const settings = parseSettings(settingsSheet);
 
   const responseData = { sessions, transactions, users, settings, serverTime: Date.now() };
-  cache.put('allData', JSON.stringify(responseData), 4);
+  cache.put('allData', JSON.stringify(responseData), 2);
   return respond(responseData);
 }
 

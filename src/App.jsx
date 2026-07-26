@@ -433,9 +433,34 @@ function App() {
 
     try {
       const res = await claimSession(claimPayload);
-      if (res && res.transaction) {
+      if (res && !res.error) {
+        // Build a local transaction object immediately so the history tab
+        // updates instantly without waiting for the next 5-second poll
+        const localTxn = res.transaction || {
+          id: claimPayload.sessionId ? `t-${Math.random().toString(36).slice(2,8)}` : claimPayload.sessionId,
+          no: Date.now(),
+          queueNo: claimPayload.queueNo || 0,
+          nama: claimPayload.nama,
+          tanggal: claimPayload.tanggal || todayStr(),
+          startTime: claimPayload.startTime,
+          endTime: claimPayload.endTime,
+          items: claimPayload.items,
+          ot: claimPayload.ot,
+          otDur: claimPayload.otDur,
+          totalBase: claimPayload.totalBase,
+          totalOT: claimPayload.totalOT,
+          totalTol: claimPayload.totalTol,
+          grandTotal: claimPayload.grandTotal,
+          totalAll: claimPayload.totalAll,
+          payAwal: claimPayload.payAwal,
+          cash: claimPayload.cash,
+          qris: claimPayload.qris,
+          shift: claimPayload.shift
+        };
+
         setTransactions(prev => {
-          const newTxns = [...prev, res.transaction];
+          const without = prev.filter(t => t.id !== localTxn.id);
+          const newTxns = [...without, localTxn];
           safeSetItem('kw_txns', JSON.stringify(newTxns));
           return newTxns;
         });
@@ -452,8 +477,10 @@ function App() {
         });
 
         if (printSelesai) {
-          handlePrintSelesai(res.transaction);
+          handlePrintSelesai(localTxn);
         }
+      } else {
+        throw new Error(res && res.error ? res.error : 'Unknown error');
       }
     } catch (e) {
       console.error('Failed to finalize payment:', e);
