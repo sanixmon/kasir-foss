@@ -1,4 +1,12 @@
-const SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
+let SPREADSHEET_ID = '';
+try {
+  SPREADSHEET_ID = SpreadsheetApp.getActiveSpreadsheet().getId();
+} catch (e) {
+  // Jika Apps Script dibuat terpisah via script.google.com (Standalone Script),
+  // masukkan Spreadsheet ID Anda di bawah ini (diambil dari URL Spreadsheet antara /d/ dan /edit):
+  SPREADSHEET_ID = 'MASUKKAN_SPREADSHEET_ID_DISINI';
+}
+
 const SHEET_SESSIONS = 'ActiveSessions';
 const SHEET_TRANSACTIONS = 'Transactions';
 const SHEET_SETTINGS = 'Settings';
