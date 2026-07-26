@@ -224,18 +224,25 @@ function formatTanggal(val) {
 }
 
 function parseDateTimeToTimestamp(tanggalVal, timeVal) {
+  if (typeof timeVal === 'number' && timeVal > 1000000000000) return timeVal;
+  if (timeVal instanceof Date) return timeVal.getTime();
+  
+  const timeStr = formatTimeOnly(timeVal) || '00:00:00';
   const tglStr = formatTanggal(tanggalVal);
-  let timeStr = formatTimeOnly(timeVal);
-  if (!timeStr) timeStr = '00:00:00';
   
-  let d = new Date(`${tglStr} ${timeStr}`);
-  if (isNaN(d.getTime())) return Date.now();
+  let primary = new Date(`${tglStr} ${timeStr}`).getTime();
+  if (isNaN(primary)) return Date.now();
   
-  const hh = d.getHours();
-  if (hh < 6) {
-    d.setDate(d.getDate() + 1);
-  }
-  return d.getTime();
+  const cand1 = primary;
+  const cand2 = primary + 86400000;
+  const cand3 = primary - 86400000;
+  
+  const now = Date.now();
+  const candidates = [cand1, cand2, cand3].filter(c => c <= now + 3600000);
+  if (candidates.length === 0) return primary;
+  
+  candidates.sort((a, b) => Math.abs(a - now) - Math.abs(b - now));
+  return candidates[0];
 }
 
 function formatItemsSummary(items) {

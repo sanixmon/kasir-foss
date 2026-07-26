@@ -1,6 +1,23 @@
+function getShiftDateStr(val) {
+  if (!val) return '';
+  if (typeof val === 'string' && val.length >= 10 && val.indexOf('-') === 4) return val.slice(0, 10);
+  const d = new Date(Number(val));
+  if (isNaN(d.getTime())) return '';
+  d.setHours(d.getHours() - 6);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function aggregateHistory(transactions, mode, value, sortOrder = 'desc') {
   const filtered = transactions
-    .filter(t => t.tanggal?.startsWith(value))
+    .filter(t => {
+      if (!value) return true;
+      if (t.tanggal && t.tanggal.startsWith(value)) return true;
+      const startShiftDate = getShiftDateStr(t.startTime);
+      if (startShiftDate && startShiftDate.startsWith(value)) return true;
+      const endShiftDate = getShiftDateStr(t.endTime);
+      if (endShiftDate && endShiftDate.startsWith(value)) return true;
+      return false;
+    })
     .sort((a, b) => {
       const timeA = Number(a.endTime || a.end_time || 0);
       const timeB = Number(b.endTime || b.end_time || 0);
