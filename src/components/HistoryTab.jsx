@@ -38,7 +38,7 @@ const formatTimeStr = (val) => {
   return d.toTimeString().slice(0, 5);
 };
 
-function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, currentUserRole }) {
+function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, currentUserRole }) {
   const getLocalDateString = () => {
     const d = new Date();
     d.setHours(d.getHours() - 6); // Shift rollover at 6 AM
@@ -64,6 +64,10 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, currentUserRole }) 
     if (filtered.length === 0) { 
       alert('Tidak ada data untuk diexport'); 
       return; 
+    }
+    if (!window.XLSX || !window.XLSX.utils) {
+      alert('Library Excel (XLSX) belum dimuat. Mohon periksa koneksi internet atau muat ulang halaman.');
+      return;
     }
     const dataRows = filtered.map(t => ({
       No: t.no, 
@@ -128,7 +132,14 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, currentUserRole }) 
             </div>
 
             {!isCashier && (
-              <button className="btn-export ms-1" onClick={handleExport}><i className="bi bi-download me-1"></i>Export</button>
+              <>
+                <button className="btn-export ms-1" onClick={handleExport}><i className="bi bi-download me-1"></i>Export</button>
+                {onClearHistory && (
+                  <button className="btn btn-sm btn-outline-danger ms-1" onClick={onClearHistory} title="Bersihkan Semua Riwayat">
+                    <i className="bi bi-trash-fill me-1"></i>Bersihkan Riwayat
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -185,30 +196,33 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, currentUserRole }) 
                     const pokokCash = isCash ? (t.totalBase || 0) : 0;
                     const pokokQris = isQris ? (t.totalBase || 0) : 0;
 
+                    const otEmpty    = !t.ot || t.ot === '-';
+                    const otDurEmpty = !t.otDur || t.otDur === '-';
+                    const cashExtra  = (t.cash || 0) > 0;
+                    const qrisExtra  = (t.qris || 0) > 0;
+
                     return (
                       <tr key={t.id}>
-                        <td>{idx + 1}</td>
-                        <td><strong>{t.nama}</strong></td>
-                        <td><span className="badge-shift">{shiftCode(t.shift)}</span></td>
-                        <td>{t.tanggal || dateStr(t.startTime)}</td>
-                        <td style={{ whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
+                        <td data-label="No">{idx + 1}</td>
+                        <td data-label="Nama"><strong>{t.nama}</strong></td>
+                        <td data-label="Shift"><span className="badge-shift">{shiftCode(t.shift)}</span></td>
+                        <td data-label="Tgl">{t.tanggal || dateStr(t.startTime)}</td>
+                        <td data-label="Waktu" style={{ whiteSpace: 'nowrap', fontSize: '0.78rem' }}>
                           <span>{formatTimeStr(t.startTime)}</span> <i className="bi bi-arrow-right text-secondary mx-1"></i> <strong className="clr-cyan" title="Waktu Close Bill">{formatTimeStr(t.endTime)}</strong>
                         </td>
-                        <td style={{ fontSize: '0.78rem' }}>{formatItemsCell(t.items)}</td>
-                        <td style={{ fontSize: '0.78rem' }}>{t.ot || '-'}</td>
-                        <td style={{ fontSize: '0.75rem', color: 'var(--orange)' }}>{t.otDur || '-'}</td>
-                        <td>{isCash ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>{fmtRp(t.totalBase || 0)}</span> : '—'}</td>
-                        <td>{isQris ? <span style={{ color: 'var(--cyan)', fontWeight: 700 }}>{fmtRp(t.totalBase || 0)}</span> : '—'}</td>
-                        <td>{(t.cash || 0) > 0 ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>{fmtRp(t.cash)}</span> : '—'}</td>
-                        <td>{(t.qris || 0) > 0 ? <span style={{ color: 'var(--cyan)', fontWeight: 700 }}>{fmtRp(t.qris)}</span> : '—'}</td>
-                        <td><span style={{ fontWeight: 800, color: 'var(--green)' }}>{fmtRp(pokokCash + (t.cash || 0))}</span></td>
-                        <td><span style={{ fontWeight: 800, color: 'var(--cyan)' }}>{fmtRp(pokokQris + (t.qris || 0))}</span></td>
-                        <td><span style={{ fontWeight: 800, color: 'var(--yellow)' }}>{fmtRp(t.totalAll || ((t.totalBase || 0) + (t.grandTotal || 0)))}</span></td>
+                        <td data-label="Item" style={{ fontSize: '0.78rem' }}>{formatItemsCell(t.items)}</td>
+                        <td data-label="OT" data-empty={otEmpty || undefined} style={{ fontSize: '0.78rem' }}>{t.ot || '-'}</td>
+                        <td data-label="Dur OT" data-empty={otDurEmpty || undefined} style={{ fontSize: '0.75rem', color: 'var(--orange)' }}>{t.otDur || '-'}</td>
+                        <td data-label="Pokok (C)" data-empty={!isCash || undefined}>{isCash ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>{fmtRp(t.totalBase || 0)}</span> : '—'}</td>
+                        <td data-label="Pokok (QR)" data-empty={!isQris || undefined}>{isQris ? <span style={{ color: 'var(--cyan)', fontWeight: 700 }}>{fmtRp(t.totalBase || 0)}</span> : '—'}</td>
+                        <td data-label="Tamb (C)" data-empty={!cashExtra || undefined}>{cashExtra ? <span style={{ color: 'var(--green)', fontWeight: 700 }}>{fmtRp(t.cash)}</span> : '—'}</td>
+                        <td data-label="Tamb (QR)" data-empty={!qrisExtra || undefined}>{qrisExtra ? <span style={{ color: 'var(--cyan)', fontWeight: 700 }}>{fmtRp(t.qris)}</span> : '—'}</td>
+                        <td data-label="Total Cash" data-empty={(pokokCash + (t.cash || 0)) === 0 || undefined}><span style={{ fontWeight: 800, color: 'var(--green)' }}>{fmtRp(pokokCash + (t.cash || 0))}</span></td>
+                        <td data-label="Total QRIS" data-empty={(pokokQris + (t.qris || 0)) === 0 || undefined}><span style={{ fontWeight: 800, color: 'var(--cyan)' }}>{fmtRp(pokokQris + (t.qris || 0))}</span></td>
+                        <td data-label="Grand Total"><span style={{ fontWeight: 800, color: 'var(--yellow)' }}>{fmtRp(t.totalAll || ((t.totalBase || 0) + (t.grandTotal || 0)))}</span></td>
                         <td>
                           <button className="act-btn me-2" onClick={() => onPrintTxn(t)} title="Print Struk"><i className="bi bi-printer-fill text-secondary"></i></button>
-                          {!isCashier && (
-                            <button className="act-btn" onClick={() => onDeleteTxn(t.id)} title="Hapus Bill"><i className="bi bi-trash3-fill clr-red"></i></button>
-                          )}
+                          <button className="act-btn" onClick={() => onDeleteTxn(t)} title="Hapus Bill"><i className="bi bi-trash3-fill clr-red"></i></button>
                         </td>
                       </tr>
                     );

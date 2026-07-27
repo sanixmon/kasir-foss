@@ -2,14 +2,19 @@ import React, { useState } from 'react';
 import { fmtRp } from '../App';
 
 function PaymentModal({ bayarData, onClose, onFinalize }) {
-  const { grand, base, session } = bayarData;
+  const { grand = 0, session = {} } = bayarData || {};
   const isNoOT = grand === 0;
 
-  const [payMode, setPayMode] = useState(isNoOT ? session.payAwal : 'cash');
+  const [payMode, setPayMode] = useState(isNoOT ? (session?.payAwal || 'cash') : 'cash');
   const [cashAmt, setCashAmt] = useState(grand);
   const [qrisAmt, setQrisAmt] = useState(0);
 
-  const handleFinalize = () => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleFinalize = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     let finalCash = 0;
     let finalQris = 0;
 
@@ -19,7 +24,13 @@ function PaymentModal({ bayarData, onClose, onFinalize }) {
       finalQris = grand;
     }
 
-    onFinalize(finalCash, finalQris);
+    try {
+      await onFinalize(finalCash, finalQris);
+    } catch (err) {
+      console.error('Finalize payment failed:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const changeVal = Math.max(0, cashAmt - grand);
@@ -81,10 +92,19 @@ function PaymentModal({ bayarData, onClose, onFinalize }) {
               )}
 
 
-              <button className="btn-start w-100 mb-2" onClick={handleFinalize}>
-                <i className="bi bi-check-circle-fill me-2"></i>Konfirmasi Pembayaran
+              <button className="btn-start w-100 mb-2" onClick={handleFinalize} disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                    Menyimpan Transaksi...
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-check-circle-fill me-2"></i>Konfirmasi Pembayaran
+                  </>
+                )}
               </button>
-              <button className="btn-sec w-100" onClick={onClose}>
+              <button className="btn-sec w-100" onClick={onClose} disabled={isSubmitting}>
                 Batal
               </button>
             </div>

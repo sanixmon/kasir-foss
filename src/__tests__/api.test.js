@@ -15,7 +15,9 @@ describe('Apps Script API Client', () => {
     });
 
     const result = await fetchAllData();
-    expect(global.fetch).toHaveBeenCalledWith('https://script.google.com/test/exec');
+    expect(global.fetch).toHaveBeenCalledWith('https://script.google.com/test/exec', expect.objectContaining({
+      signal: expect.anything()
+    }));
     expect(result).toEqual(mockData);
   });
 

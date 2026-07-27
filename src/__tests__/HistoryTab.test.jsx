@@ -25,7 +25,7 @@ describe('HistoryTab - Immutability & Role Based Permissions', () => {
     }
   ];
 
-  it('restricts cashier view to today and hides both edit and delete buttons', () => {
+  it('restricts cashier view to today and shows print and delete-by-bill buttons', () => {
     render(
       <HistoryTab
         transactions={mockTxns}
@@ -42,10 +42,10 @@ describe('HistoryTab - Immutability & Role Based Permissions', () => {
     expect(screen.queryByRole('option', { name: 'Bulanan' })).toBeNull();
     expect(screen.queryByText('Export')).toBeNull();
 
-    // Verify row action buttons: ONLY Print Struk is visible; Edit & Hapus are hidden
+    // Verify row action buttons: Print Struk and Hapus Bill (which triggers admin verification) are present; Edit is hidden
     expect(screen.getByTitle('Print Struk')).toBeInTheDocument();
+    expect(screen.getByTitle('Hapus Bill')).toBeInTheDocument();
     expect(screen.queryByTitle('Edit Bill / Transaksi')).toBeNull();
-    expect(screen.queryByTitle('Hapus Bill')).toBeNull();
   });
 
   it('shows full history controls and delete option for admin, BUT NO edit button (immutability rule)', () => {
@@ -69,6 +69,26 @@ describe('HistoryTab - Immutability & Role Based Permissions', () => {
 
     // Test delete trigger
     fireEvent.click(screen.getByTitle('Hapus Bill'));
-    expect(mockDelete).toHaveBeenCalledWith('txn-1');
+    expect(mockDelete).toHaveBeenCalledWith(mockTxns[0]);
+  });
+
+  it('renders "Bersihkan Riwayat" button for admin and triggers onClearHistory', () => {
+    const mockClear = vi.fn();
+
+    render(
+      <HistoryTab
+        transactions={mockTxns}
+        onPrintTxn={vi.fn()}
+        onDeleteTxn={vi.fn()}
+        onClearHistory={mockClear}
+        currentUserRole="admin"
+      />
+    );
+
+    const clearBtn = screen.getByTitle('Bersihkan Semua Riwayat');
+    expect(clearBtn).toBeInTheDocument();
+
+    fireEvent.click(clearBtn);
+    expect(mockClear).toHaveBeenCalledTimes(1);
   });
 });

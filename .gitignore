@@ -24,3 +24,9 @@ dist-ssr
 *.sw?
 .vercel
 .env*
+index.html.src
+assets
+__pycache__/
+*.pyc
+data/
+*.db*

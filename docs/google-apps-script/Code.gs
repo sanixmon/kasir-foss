@@ -29,6 +29,9 @@ function doPost(e) {
       case 'delete_session':return deleteSession(payload);
       case 'save_setting':  return saveSetting(payload);
       case 'save_user':     return saveUser(payload);
+      case 'delete_user':   return deleteUser(payload);
+      case 'delete_txn':    return deleteTxn(payload);
+      case 'clear_all_txns':return clearAllTxns();
       default:              return respond({ error: 'Invalid action: ' + action });
     }
   } catch (err) {
@@ -48,6 +51,44 @@ function getOrCreateSheet(ss, name, headers) {
 }
 
 // ─── Main Read ────────────────────────────────────────────────────────────────
+
+function getDeletedTxnsList(ss) {
+  try {
+    var settSheet = getOrCreateSheet(ss, SHEET_SETTINGS, ['Key','Value']);
+    var rows = settSheet.getDataRange().getValues();
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === 'deleted_txns') {
+        var val = String(rows[i][1] || '[]');
+        return JSON.parse(val);
+      }
+    }
+  } catch(e) {}
+  return [];
+}
+
+function addDeletedTxns(ss, newIds) {
+  try {
+    var settSheet = getOrCreateSheet(ss, SHEET_SETTINGS, ['Key','Value']);
+    var list = getDeletedTxnsList(ss);
+    newIds.forEach(function(id) {
+      var s = String(id).trim();
+      if (s && list.indexOf(s) === -1) list.push(s);
+    });
+    var valStr = JSON.stringify(list);
+    var rows = settSheet.getDataRange().getValues();
+    var found = false;
+    for (var i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === 'deleted_txns') {
+        settSheet.getRange(i + 1, 2).setValue(valStr);
+        found = true;
+        break;
+      }
+    }
+    if (!found) {
+      settSheet.appendRow(['deleted_txns', valStr]);
+    }
+  } catch(e) {}
+}
 
 function fetchAllData() {
   const cache  = CacheService.getScriptCache();
@@ -74,9 +115,20 @@ function fetchAllData() {
     .forEach(function(s){ settSheet.appendRow(s); });
   }
 
+  var deletedList = getDeletedTxnsList(ss);
+  var rawTxns = parseSheetRows(txnSheet);
+  var filteredTxns = rawTxns.filter(function(t) {
+    if (!t) return false;
+    var tId = String(t.id || '').trim();
+    var tNo = String(t.no || '').trim();
+    if (tId && deletedList.indexOf(tId) !== -1) return false;
+    if (tNo && deletedList.indexOf(tNo) !== -1) return false;
+    return true;
+  });
+
   var result = {
     sessions:     parseSheetRows(sessSheet),
-    transactions: parseSheetRows(txnSheet),
+    transactions: filteredTxns,
     users:        parseUsers(usersSheet),
     settings:     parseSettings(settSheet),
     serverTime:   Date.now()
@@ -290,13 +342,35 @@ function addSession(payload) {
   try {
     var ss         = SpreadsheetApp.openById(SPREADSHEET_ID);
     var sheet      = getOrCreateSheet(ss, SHEET_SESSIONS, ['id','nama','items','start_time','tanggal','queue_no','pay_awal']);
+    var txnSheet   = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id','no','queue_no','nama','tanggal','start_time','end_time','items','ot','ot_dur','total_base','total_ot','total_tol','grand_total','total_all','pay_awal','cash','qris','shift']);
     var startMs    = payload.startTime || Date.now();
     var shiftDate  = payload.tanggal   || getShiftDate(startMs);
 
-    var lastRow    = sheet.getLastRow();
-    var rows       = lastRow > 1 ? sheet.getRange(2, 1, lastRow - 1, 7).getValues() : [];
-    var queueNo    = rows.filter(function(r){ return formatTanggal(r[4]) === shiftDate; }).length + 1;
+    var maxQueueNo = 0;
 
+    var sessLast = sheet.getLastRow();
+    if (sessLast > 1) {
+      var sessRows = sheet.getRange(2, 1, sessLast - 1, 7).getValues();
+      sessRows.forEach(function(r) {
+        if (formatTanggal(r[4]) === shiftDate) {
+          var q = Number(r[5] || 0);
+          if (q > maxQueueNo) maxQueueNo = q;
+        }
+      });
+    }
+
+    var txnLast = txnSheet.getLastRow();
+    if (txnLast > 1) {
+      var txnRows = txnSheet.getRange(2, 1, txnLast - 1, 19).getValues();
+      txnRows.forEach(function(r) {
+        if (formatTanggal(r[4]) === shiftDate) {
+          var q = Number(r[2] || 0);
+          if (q > maxQueueNo) maxQueueNo = q;
+        }
+      });
+    }
+
+    var queueNo    = maxQueueNo + 1;
     var id         = payload.id || generateShortId('s');
     var newRow     = [id, payload.nama || 'Penyewa', formatItemsSummary(payload.items || []),
                      formatTimeOnly(startMs), shiftDate, queueNo, payload.payAwal || 'cash'];
@@ -421,6 +495,83 @@ function saveUser(payload) {
     if (!found && payload.username) {
       sheet.appendRow([payload.username, payload.password || '1234', payload.role || 'cashier']);
     }
+    CacheService.getScriptCache().remove('allData');
+    return respond({ success: true });
+  } finally { lock.releaseLock(); }
+}
+
+function deleteUser(payload) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = getOrCreateSheet(ss, SHEET_USERS, ['username','password','role']);
+    var data  = sheet.getDataRange().getValues();
+    for (var i = 1; i < data.length; i++) {
+      if (String(data[i][0]).toLowerCase() === String(payload.username).toLowerCase()) {
+        sheet.deleteRow(i + 1);
+        break;
+      }
+    }
+    CacheService.getScriptCache().remove('allData');
+    return respond({ success: true });
+  } finally { lock.releaseLock(); }
+}
+
+function clearAllTxns() {
+  return deleteTxn({ clearAll: true });
+}
+
+function deleteTxn(payload) {
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    var sheet = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id','no','queue_no','nama','tanggal','start_time','end_time','items','ot','ot_dur','total_base','total_ot','total_tol','grand_total','total_all','pay_awal','cash','qris','shift']);
+    var data  = sheet.getDataRange().getValues();
+    
+    if (payload && payload.clearAll) {
+      if (data.length > 1) {
+        sheet.deleteRows(2, data.length - 1);
+      }
+      var settSheet = getOrCreateSheet(ss, SHEET_SETTINGS, ['Key','Value']);
+      var rows = settSheet.getDataRange().getValues();
+      for (var k = 1; k < rows.length; k++) {
+        if (String(rows[k][0]) === 'deleted_txns') {
+          settSheet.getRange(k + 1, 2).setValue('[]');
+          break;
+        }
+      }
+      CacheService.getScriptCache().remove('allData');
+      return respond({ success: true });
+    }
+
+    var targetId = String((payload && payload.id) || (typeof payload === 'string' ? payload : '')).trim();
+    var targetNo = String((payload && payload.no) || (typeof payload === 'number' ? payload : '')).trim();
+    var targetIdNum = parseInt(targetId, 10);
+    var targetNoNum = parseInt(targetNo, 10);
+
+    var deletedToRecord = [];
+    if (targetId) deletedToRecord.push(targetId);
+    if (targetNo) deletedToRecord.push(targetNo);
+
+    for (var i = data.length - 1; i >= 1; i--) {
+      var rowId = String(data[i][0] || '').trim();
+      var rowNo = String(data[i][1] || '').trim();
+      var rowIdNum = parseInt(rowId, 10);
+      var rowNoNum = parseInt(rowNo, 10);
+
+      var matchId = targetId && (rowId === targetId || rowNo === targetId || (!isNaN(targetIdNum) && (rowIdNum === targetIdNum || rowNoNum === targetIdNum)));
+      var matchNo = targetNo && (rowNo === targetNo || rowId === targetNo || (!isNaN(targetNoNum) && (rowNoNum === targetNoNum || rowIdNum === targetNoNum)));
+
+      if (matchId || matchNo) {
+        if (rowId) deletedToRecord.push(rowId);
+        if (rowNo) deletedToRecord.push(rowNo);
+        sheet.deleteRow(i + 1);
+      }
+    }
+
+    addDeletedTxns(ss, deletedToRecord);
     CacheService.getScriptCache().remove('allData');
     return respond({ success: true });
   } finally { lock.releaseLock(); }

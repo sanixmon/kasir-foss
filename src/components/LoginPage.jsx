@@ -1,19 +1,41 @@
 import React, { useState } from 'react';
 
-const SHIFT_USERS = ['akbar','rani','monica','aldy','wahyu','donny','zumi','awang'];
-const SHIFT_PASS = 'jayalahevren';
-
-function LoginPage({ onLogin }) {
+function LoginPage({ users = [], onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogin = () => {
-    if (!username) { setError('Pilih nama kasir!'); return; }
-    if (!SHIFT_USERS.includes(username.toLowerCase())) { setError('Kasir tidak ditemukan!'); return; }
-    if (password !== SHIFT_PASS) { setError('Password shift tidak sesuai!'); return; }
+    if (isSubmitting) return;
+    const trimmed = username.trim();
+    if (!trimmed) { setError('Ketik nama kasir terlebih dahulu!'); return; }
+
+    if (!users || users.length === 0) {
+      setError('Belum ada akun kasir. Silakan hubungi admin.');
+      return;
+    }
+
+    const userMatch = users.find(u =>
+      u.username && u.username.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (!userMatch) { setError('Nama kasir tidak ditemukan!'); return; }
+
+    const validPass = (userMatch.password !== undefined && userMatch.password !== null && userMatch.password !== '') 
+      ? userMatch.password 
+      : 'jayalahevren';
+    if (password !== validPass) {
+      setError('Password shift tidak sesuai!');
+      return;
+    }
+
     setError('');
-    onLogin(username);
+    setIsSubmitting(true);
+    try {
+      onLogin(userMatch.username);
+    } finally {
+      setTimeout(() => setIsSubmitting(false), 1000);
+    }
   };
 
   return (
@@ -25,31 +47,35 @@ function LoginPage({ onLogin }) {
         </div>
         <hr className="login-divider" style={{ marginTop: 0, marginBottom: '20px' }} />
         <div className="login-shift-title"><i className="bi bi-person-badge-fill me-1"></i>Login Shift Kasir</div>
-        <select 
-          value={username} 
-          onChange={(e) => setUsername(e.target.value)} 
-          className="login-select"
-        >
-          <option value="">— Pilih Nama Kasir —</option>
-          <option value="akbar">Akbar</option>
-          <option value="rani">Rani</option>
-          <option value="monica">Monica</option>
-          <option value="aldy">Aldy</option>
-          <option value="wahyu">Wahyu</option>
-          <option value="donny">Donny</option>
-          <option value="zumi">Zumi</option>
-          <option value="awang">Awang</option>
-        </select>
-        <input 
-          type="password" 
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="login-field" 
-          placeholder="Password shift..." 
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => { setUsername(e.target.value); setError(''); }}
+          className="login-field"
+          placeholder="Ketik nama kasir..."
+          autoComplete="off"
+          autoFocus
           onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
         />
-        <button className="btn-login" onClick={handleLogin}>
-          <i className="bi bi-box-arrow-in-right"></i>Mulai Shift
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="login-field"
+          placeholder="Password shift..."
+          onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+        />
+        <button className="btn-login" onClick={handleLogin} disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+              Memproses...
+            </>
+          ) : (
+            <>
+              <i className="bi bi-box-arrow-in-right"></i>Mulai Shift
+            </>
+          )}
         </button>
         <div className="login-err d-flex align-items-center justify-content-center gap-2">
           {error && (

@@ -28,53 +28,17 @@ function TrackingPage({ trackingId }) {
     }
 
     let isMounted = true;
-    const fetchStatus = async () => {
-      setLoading(true);
-      setError('');
 
-      // 1. Cek langsung di localStorage
-      try {
-        const localSessions = JSON.parse(localStorage.getItem('kw_sessions') || '[]');
-        const localSess = localSessions.find(s => s.id === cleanId);
-        if (localSess && isMounted) {
-          setSession({
-            id: localSess.id,
-            nama: localSess.nama,
-            items: localSess.items || [],
-            startTime: localSess.startTime || localSess.start_time,
-            payAwal: localSess.payAwal || localSess.pay_awal || 'cash',
-            queueNo: localSess.queueNo || localSess.queue_no || 0
-          });
-          setLoading(false);
-          return;
-        }
+    const fetchStatus = async (showLoading = false) => {
+      if (showLoading) setLoading(true);
 
-        const localTxns = JSON.parse(localStorage.getItem('kw_txns') || '[]');
-        const localTxn = localTxns.find(t => t.id === cleanId);
-        if (localTxn && isMounted) {
-          setTxn({
-            ...localTxn,
-            start_time: localTxn.start_time || localTxn.startTime,
-            end_time: localTxn.end_time || localTxn.endTime,
-            ot_dur: localTxn.ot_dur || localTxn.otDur || '-',
-            total_ot: localTxn.total_ot !== undefined ? localTxn.total_ot : (localTxn.totalOT || 0),
-            total_all: localTxn.total_all !== undefined ? localTxn.total_all : (localTxn.totalAll || 0),
-            pay_awal: localTxn.pay_awal || localTxn.payAwal || 'cash',
-            queue_no: localTxn.queue_no || localTxn.queueNo || 0
-          });
-          setLoading(false);
-          return;
-        }
-      } catch (e) {
-        console.warn('Gagal membaca localStorage tracking:', e);
-      }
-
-      // 2. Cek via Apps Script API
+      // 1. Prioritaskan Cek Cloud Backend
       try {
         const data = await fetchAllData();
         if (data && isMounted) {
-          const cloudSess = (data.sessions || []).find(s => s.id === cleanId);
+          const cloudSess = (data.sessions || []).find(s => s && s.id === cleanId);
           if (cloudSess) {
+            setTxn(null);
             setSession({
               id: cloudSess.id,
               nama: cloudSess.nama,
@@ -83,12 +47,14 @@ function TrackingPage({ trackingId }) {
               payAwal: cloudSess.payAwal || cloudSess.pay_awal || 'cash',
               queueNo: cloudSess.queueNo || cloudSess.queue_no || 0
             });
+            setError('');
             setLoading(false);
             return;
           }
 
-          const cloudTxn = (data.transactions || []).find(t => t.id === cleanId);
+          const cloudTxn = (data.transactions || []).find(t => t && t.id === cleanId);
           if (cloudTxn) {
+            setSession(null);
             setTxn({
               ...cloudTxn,
               start_time: cloudTxn.start_time || cloudTxn.startTime,
@@ -99,12 +65,54 @@ function TrackingPage({ trackingId }) {
               pay_awal: cloudTxn.pay_awal || cloudTxn.payAwal || 'cash',
               queue_no: cloudTxn.queue_no || cloudTxn.queueNo || 0
             });
+            setError('');
             setLoading(false);
             return;
           }
         }
       } catch (err) {
-        console.error('Tracking fetch error:', err);
+        console.warn('Cloud fetch error pada tracking page:', err);
+      }
+
+      // 2. Fallback: Cek di localStorage jika cloud offline/delay
+      try {
+        const localSessions = JSON.parse(localStorage.getItem('kw_sessions') || '[]');
+        const localSess = localSessions.find(s => s && s.id === cleanId);
+        if (localSess && isMounted) {
+          setTxn(null);
+          setSession({
+            id: localSess.id,
+            nama: localSess.nama,
+            items: localSess.items || [],
+            startTime: localSess.startTime || localSess.start_time,
+            payAwal: localSess.payAwal || localSess.pay_awal || 'cash',
+            queueNo: localSess.queueNo || localSess.queue_no || 0
+          });
+          setError('');
+          setLoading(false);
+          return;
+        }
+
+        const localTxns = JSON.parse(localStorage.getItem('kw_txns') || '[]');
+        const localTxn = localTxns.find(t => t && t.id === cleanId);
+        if (localTxn && isMounted) {
+          setSession(null);
+          setTxn({
+            ...localTxn,
+            start_time: localTxn.start_time || localTxn.startTime,
+            end_time: localTxn.end_time || localTxn.endTime,
+            ot_dur: localTxn.ot_dur || localTxn.otDur || '-',
+            total_ot: localTxn.total_ot !== undefined ? localTxn.total_ot : (localTxn.totalOT || 0),
+            total_all: localTxn.total_all !== undefined ? localTxn.total_all : (localTxn.totalAll || 0),
+            pay_awal: localTxn.pay_awal || localTxn.payAwal || 'cash',
+            queue_no: localTxn.queue_no || localTxn.queueNo || 0
+          });
+          setError('');
+          setLoading(false);
+          return;
+        }
+      } catch (e) {
+        console.warn('Gagal membaca localStorage tracking:', e);
       }
 
       if (isMounted) {
@@ -113,11 +121,19 @@ function TrackingPage({ trackingId }) {
       }
     };
 
-    fetchStatus();
-    return () => { isMounted = false; };
+    fetchStatus(true);
+
+    const interval = setInterval(() => {
+      fetchStatus(false);
+    }, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [cleanId, retryCount]);
 
-  // Live timer tick
+  // Live timer tick per detik
   useEffect(() => {
     if (!session) return;
     const interval = setInterval(() => {

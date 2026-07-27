@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { ITEMS } from '../App';
 
 function EditActiveSessionModal({ session, onClose, onSave }) {
-  const [nama, setNama] = useState(session.nama);
-  const [payAwal, setPayAwal] = useState(session.payAwal || 'cash');
-  const [editItems, setEditItems] = useState(session.items.map(i => ({ ...i })));
+  const [nama, setNama] = useState(session?.nama || '');
+  const [payAwal, setPayAwal] = useState(session?.payAwal || 'cash');
+  const [editItems, setEditItems] = useState(() => Array.isArray(session?.items) ? session.items.map(i => (i ? { ...i } : null)).filter(Boolean) : []);
 
   const handleChgQty = (code, delta) => {
     setEditItems(prev => {
@@ -23,7 +23,11 @@ function EditActiveSessionModal({ session, onClose, onSave }) {
     });
   };
 
-  const handleSave = () => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSave = async (e) => {
+    if (e && e.preventDefault) e.preventDefault();
+    if (isSubmitting) return;
     const trimmedNama = nama.trim();
     if (!trimmedNama) {
       alert('Nama tidak boleh kosong!');
@@ -35,12 +39,19 @@ function EditActiveSessionModal({ session, onClose, onSave }) {
       return;
     }
 
-    onSave({
-      ...session,
-      nama: trimmedNama,
-      payAwal,
-      items: finalItems
-    });
+    setIsSubmitting(true);
+    try {
+      await onSave({
+        ...session,
+        nama: trimmedNama,
+        payAwal,
+        items: finalItems
+      });
+    } catch (err) {
+      console.error('Save edited session failed:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -110,8 +121,19 @@ function EditActiveSessionModal({ session, onClose, onSave }) {
                 })}
               </div>
               <div className="d-flex gap-2 mt-4">
-                <button className="btn-sec flex-fill py-2" onClick={onClose}>Batal</button>
-                <button className="btn-start flex-fill py-2" onClick={handleSave}><i className="bi bi-floppy-fill me-2"></i>Simpan</button>
+                <button className="btn-sec flex-fill py-2" onClick={onClose} disabled={isSubmitting}>Batal</button>
+                <button className="btn-start flex-fill py-2" onClick={handleSave} disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                      Menyimpan...
+                    </>
+                  ) : (
+                    <>
+                      <i className="bi bi-floppy-fill me-2"></i>Simpan
+                    </>
+                  )}
+                </button>
               </div>
             </div>
           </div>

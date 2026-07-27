@@ -3,13 +3,21 @@ import React, { useState } from 'react';
 function PasswordVerificationModal({ adminPassword, onVerifySuccess, onClose }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleVerify = () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     if (password === adminPassword) {
       setError(false);
-      onVerifySuccess();
+      try {
+        onVerifySuccess();
+      } finally {
+        setTimeout(() => setIsSubmitting(false), 800);
+      }
     } else {
       setError(true);
+      setIsSubmitting(false);
     }
   };
 
@@ -25,7 +33,7 @@ function PasswordVerificationModal({ adminPassword, onVerifySuccess, onClose }) 
         <div className="modal-content cmodal">
           <div className="modal-header cmodal-head">
             <h5 className="modal-title"><i className="bi bi-shield-lock-fill me-2"></i>Verifikasi Admin</h5>
-            <button type="button" className="btn-close" onClick={onClose}></button>
+            <button type="button" className="btn-close" onClick={onClose} disabled={isSubmitting}></button>
           </div>
           <div className="modal-body">
             <input 
@@ -36,9 +44,19 @@ function PasswordVerificationModal({ adminPassword, onVerifySuccess, onClose }) 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={handleKeyDown}
+              disabled={isSubmitting}
               autoFocus
             />
-            <button className="btn-start w-100" onClick={handleVerify}>Masuk</button>
+            <button className="btn-start w-100" onClick={handleVerify} disabled={isSubmitting}>
+              {isSubmitting ? (
+                <>
+                  <span className="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+                  Memproses...
+                </>
+              ) : (
+                'Masuk'
+              )}
+            </button>
             {error && <p className="text-danger small mt-2 mb-0">❌ Password salah!</p>}
           </div>
         </div>

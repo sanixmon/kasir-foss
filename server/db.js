@@ -1,0 +1,355 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+
+let db;
+
+export function initDb(dbPath) {
+  const dir = path.dirname(dbPath);
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+
+  db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA journal_mode = WAL;');
+  db.exec('PRAGMA foreign_keys = ON;');
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS active_sessions (
+      id TEXT PRIMARY KEY,
+      queue_no INTEGER DEFAULT 0,
+      nama TEXT,
+      items TEXT,
+      start_time INTEGER,
+      tanggal TEXT,
+      pay_awal TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS transactions (
+      id TEXT PRIMARY KEY,
+      no INTEGER,
+      queue_no INTEGER DEFAULT 0,
+      nama TEXT,
+      tanggal TEXT,
+      start_time INTEGER,
+      end_time INTEGER,
+      items TEXT,
+      ot TEXT,
+      ot_dur TEXT,
+      total_base REAL DEFAULT 0,
+      total_ot REAL DEFAULT 0,
+      total_tol REAL DEFAULT 0,
+      grand_total REAL DEFAULT 0,
+      total_all REAL DEFAULT 0,
+      pay_awal TEXT,
+      cash REAL DEFAULT 0,
+      qris REAL DEFAULT 0,
+      shift TEXT DEFAULT '-'
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS users (
+      username TEXT PRIMARY KEY,
+      password TEXT,
+      role TEXT
+    );
+  `);
+
+  return db;
+}
+
+function parseJson(str, defaultVal = []) {
+  if (!str) return defaultVal;
+  try {
+    return JSON.parse(str);
+  } catch (e) {
+    return defaultVal;
+  }
+}
+
+function formatSessionFromDb(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    queueNo: row.queue_no || 0,
+    nama: row.nama || '',
+    items: parseJson(row.items, []),
+    startTime: Number(row.start_time) || 0,
+    tanggal: row.tanggal || '',
+    payAwal: row.pay_awal || 'cash'
+  };
+}
+
+function formatTransactionFromDb(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    no: Number(row.no) || 0,
+    queueNo: Number(row.queue_no) || 0,
+    nama: row.nama || '',
+    tanggal: row.tanggal || '',
+    startTime: Number(row.start_time) || 0,
+    endTime: Number(row.end_time) || 0,
+    items: row.items || '',
+    ot: row.ot || '-',
+    otDur: row.ot_dur || '-',
+    totalBase: Number(row.total_base) || 0,
+    totalOT: Number(row.total_ot) || 0,
+    totalTol: Number(row.total_tol) || 0,
+    grandTotal: Number(row.grand_total) || 0,
+    totalAll: Number(row.total_all) || 0,
+    payAwal: row.pay_awal || 'cash',
+    cash: Number(row.cash) || 0,
+    qris: Number(row.qris) || 0,
+    shift: row.shift || '-'
+  };
+}
+
+export function getDeletedTxnsListFromDb() {
+  try {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('deleted_txns');
+    if (row && row.value) return JSON.parse(row.value);
+  } catch (e) {}
+  return [];
+}
+
+export function fetchAllData() {
+  const sessionsRows = db.prepare('SELECT * FROM active_sessions').all();
+  const txnsRows = db.prepare('SELECT * FROM transactions ORDER BY no ASC').all();
+  const usersRows = db.prepare('SELECT username, password, role FROM users').all();
+  const settingsRows = db.prepare('SELECT key, value FROM settings').all();
+  const deletedList = getDeletedTxnsListFromDb();
+
+  const filteredTxns = txnsRows
+    .map(formatTransactionFromDb)
+    .filter(t => {
+      if (!t) return false;
+      const tId = String(t.id || '').trim();
+      const tNo = String(t.no || '').trim();
+      if (tId && deletedList.includes(tId)) return false;
+      if (tNo && deletedList.includes(tNo)) return false;
+      return true;
+    });
+
+  const settings = {};
+  settingsRows.forEach(r => {
+    if (r.key !== 'deleted_txns') settings[r.key] = r.value;
+  });
+
+  return {
+    sessions: sessionsRows.map(formatSessionFromDb),
+    transactions: filteredTxns,
+    users: usersRows,
+    settings
+  };
+}
+
+export function addSession(payload) {
+  const id = payload.id || `s-${Math.random().toString(36).slice(2, 8)}`;
+  const nama = payload.nama || '';
+  const items = JSON.stringify(payload.items || []);
+  const startTime = payload.startTime || Date.now();
+  const tanggal = payload.tanggal || new Date().toISOString().split('T')[0];
+  const payAwal = payload.payAwal || 'cash';
+  const queueNo = payload.queueNo || 0;
+
+  const stmt = db.prepare(`
+    INSERT INTO active_sessions (id, queue_no, nama, items, start_time, tanggal, pay_awal)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      queue_no = excluded.queue_no,
+      nama = excluded.nama,
+      items = excluded.items,
+      start_time = excluded.start_time,
+      tanggal = excluded.tanggal,
+      pay_awal = excluded.pay_awal
+  `);
+
+  stmt.run(id, queueNo, nama, items, startTime, tanggal, payAwal);
+
+  const row = db.prepare('SELECT * FROM active_sessions WHERE id = ?').get(id);
+  return { success: true, session: formatSessionFromDb(row) };
+}
+
+export function editSession(payload) {
+  const { id } = payload;
+  if (!id) return { success: false, error: 'Session ID required' };
+
+  const existingRow = db.prepare('SELECT * FROM active_sessions WHERE id = ?').get(id);
+  if (!existingRow) {
+    return { success: false, error: 'Session not found' };
+  }
+
+  const existingSession = formatSessionFromDb(existingRow);
+  const updatedNama = payload.nama !== undefined ? String(payload.nama) : existingSession.nama;
+  const updatedItems = payload.items !== undefined ? payload.items : existingSession.items;
+  const updatedStartTime = payload.startTime !== undefined ? Number(payload.startTime) : existingSession.startTime;
+  const updatedTanggal = payload.tanggal !== undefined ? String(payload.tanggal) : existingSession.tanggal;
+  const updatedPayAwal = payload.payAwal !== undefined ? String(payload.payAwal) : existingSession.payAwal;
+  const updatedQueueNo = payload.queueNo !== undefined ? Number(payload.queueNo) : existingSession.queueNo;
+
+  const itemsStr = JSON.stringify(updatedItems || []);
+
+  const stmt = db.prepare(`
+    UPDATE active_sessions
+    SET nama = ?, items = ?, start_time = ?, tanggal = ?, pay_awal = ?, queue_no = ?
+    WHERE id = ?
+  `);
+  stmt.run(updatedNama, itemsStr, updatedStartTime, updatedTanggal, updatedPayAwal, updatedQueueNo, id);
+
+  const row = db.prepare('SELECT * FROM active_sessions WHERE id = ?').get(id);
+  return { success: true, session: formatSessionFromDb(row) };
+}
+
+export function deleteSession(id) {
+  const stmt = db.prepare('DELETE FROM active_sessions WHERE id = ?');
+  stmt.run(id);
+  return { success: true };
+}
+
+export function claimSession(payload) {
+  const {
+    sessionId,
+    queueNo = 0,
+    nama = '',
+    tanggal = '',
+    startTime = 0,
+    endTime = Date.now(),
+    items = '',
+    ot = '-',
+    otDur = '-',
+    totalBase = 0,
+    totalOT = 0,
+    totalTol = 0,
+    grandTotal = 0,
+    totalAll = 0,
+    payAwal = 'cash',
+    cash = 0,
+    qris = 0,
+    shift = '-'
+  } = payload;
+
+  const txnId = sessionId ? `t-${sessionId.replace(/^s-/, '')}` : `t-${Math.random().toString(36).slice(2, 8)}`;
+
+  if (sessionId) {
+    const existing = db.prepare('SELECT id FROM active_sessions WHERE id = ?').get(sessionId);
+    if (!existing) {
+      return { success: false, error: 'Session not found or already claimed' };
+    }
+  }
+
+  db.exec('BEGIN IMMEDIATE;');
+  try {
+    if (sessionId) {
+      db.prepare('DELETE FROM active_sessions WHERE id = ?').run(sessionId);
+    }
+
+    const maxNoRow = db.prepare('SELECT COALESCE(MAX(no), 0) + 1 AS nextNo FROM transactions').get();
+    const nextNo = maxNoRow.nextNo;
+
+    // Insert into transactions
+    const insertTxn = db.prepare(`
+      INSERT INTO transactions (
+        id, no, queue_no, nama, tanggal, start_time, end_time, items, ot, ot_dur,
+        total_base, total_ot, total_tol, grand_total, total_all, pay_awal, cash, qris, shift
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    insertTxn.run(
+      txnId, nextNo, queueNo, nama, tanggal, startTime, endTime, items, ot, otDur,
+      totalBase, totalOT, totalTol, grandTotal, totalAll, payAwal, cash, qris, shift
+    );
+
+    const row = db.prepare('SELECT * FROM transactions WHERE id = ?').get(txnId);
+    db.exec('COMMIT;');
+    return { success: true, transaction: formatTransactionFromDb(row) };
+  } catch (err) {
+    db.exec('ROLLBACK;');
+    throw err;
+  }
+}
+
+export function saveSetting(key, value) {
+  const stmt = db.prepare('INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value');
+  stmt.run(key, String(value));
+  return { success: true };
+}
+
+export function saveUser(username, password, role) {
+  const stmt = db.prepare('INSERT INTO users (username, password, role) VALUES (?, ?, ?) ON CONFLICT(username) DO UPDATE SET password = excluded.password, role = excluded.role');
+  stmt.run(username, password, role);
+  return { success: true };
+}
+
+export function deleteUser(username) {
+  const stmt = db.prepare('DELETE FROM users WHERE LOWER(username) = LOWER(?)');
+  stmt.run(username);
+  return { success: true };
+}
+
+export function clearAllTxns() {
+  db.prepare('DELETE FROM transactions').run();
+  saveSetting('deleted_txns', '[]');
+  return { success: true };
+}
+
+export function addDeletedTxnToDb(newIds) {
+  try {
+    const current = getDeletedTxnsListFromDb();
+    newIds.forEach(id => {
+      const s = String(id).trim();
+      if (s && !current.includes(s)) current.push(s);
+    });
+    saveSetting('deleted_txns', JSON.stringify(current));
+  } catch (e) {}
+}
+
+export function deleteTxn(payload) {
+  if (payload && payload.clearAll) {
+    return clearAllTxns();
+  }
+  const targetId = payload && payload.id ? String(payload.id).trim() : (typeof payload === 'string' ? payload.trim() : null);
+  const targetNoStr = payload && payload.no ? String(payload.no).trim() : null;
+  const targetNo = targetNoStr ? Number(targetNoStr) : (typeof payload === 'number' ? payload : null);
+
+  const toRecord = [];
+  if (targetId) toRecord.push(targetId);
+  if (targetNoStr) toRecord.push(targetNoStr);
+
+  const stmt = db.prepare('DELETE FROM transactions WHERE (id IS NOT NULL AND id = ?) OR (no IS NOT NULL AND no = ?) OR (no IS NOT NULL AND no = ?) OR (id IS NOT NULL AND id = ?)');
+  stmt.run(targetId, targetNo, Number(targetId) || -1, targetNoStr);
+
+  addDeletedTxnToDb(toRecord);
+  return { success: true };
+}
+
+export function handleAction(action, payload) {
+  switch (action) {
+    case 'fetch_data':
+      return fetchAllData();
+    case 'add_session':
+      return addSession(payload);
+    case 'edit_session':
+      return editSession(payload);
+    case 'delete_session':
+      return deleteSession(payload.id);
+    case 'claim_session':
+      return claimSession(payload);
+    case 'save_setting':
+      return saveSetting(payload.key, payload.value);
+    case 'save_user':
+      return saveUser(payload.username, payload.password, payload.role);
+    case 'delete_user':
+      return deleteUser(payload.username);
+    case 'delete_txn':
+      return deleteTxn(payload);
+    case 'clear_all_txns':
+      return clearAllTxns();
+    default:
+      return { error: `Unknown action: ${action}` };
+  }
+}

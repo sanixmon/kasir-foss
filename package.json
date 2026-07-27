@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
+    "dev": "if [ -f index.html.src ]; then cp index.html.src index.html; fi && vite",
+    "build": "if [ -f index.html.src ]; then cp index.html.src index.html; fi && cp index.html index.html.src && vite build && cp dist/index.html index.html && ln -sf dist/assets assets",
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
@@ -13,11 +13,13 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@google/gemini-cli": "^0.52.0",
     "@supabase/supabase-js": "^2.110.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
+    "@google/clasp": "^3.3.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",

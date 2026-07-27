@@ -30,9 +30,9 @@ function FooterNav({ activeTab, onTabChange, activeCount, currentUserRole }) {
           onClick={() => onTabChange('pengaturan')}
         >
           <div className="fnav-ico-wrap">
-            <i className="bi bi-gear-fill"></i>
+            <i className="bi bi-speedometer2"></i>
           </div>
-          <span className="fnav-label">Pengaturan</span>
+          <span className="fnav-label">Dashboard Admin</span>
         </button>
       )}
     </nav>
