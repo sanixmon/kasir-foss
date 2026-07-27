@@ -3,8 +3,10 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 let db;
+let dbPath; // store for backup
 
-export function initDb(dbPath) {
+export function initDb(pathArg) {
+  dbPath = pathArg;
   const dir = path.dirname(dbPath);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
@@ -137,7 +139,7 @@ export function fetchAllData() {
 
   const settings = {};
   settingsRows.forEach(r => {
-    if (r.key !== 'deleted_txns') settings[r.key] = r.value;
+    if (r.key !== 'deleted_txns' && r.key !== 'admin_pass') settings[r.key] = r.value;
   });
 
   return {
@@ -327,6 +329,34 @@ export function deleteTxn(payload) {
   return { success: true };
 }
 
+export function verifyAdminPassword(password) {
+  const row = db.prepare("SELECT value FROM settings WHERE key = 'admin_pass'").get();
+  if (!row) return { valid: false };
+  return { valid: row.value === password };
+}
+
+export function changeAdminPassword(oldPassword, newPassword) {
+  const verify = verifyAdminPassword(oldPassword);
+  if (!verify.valid) return { success: false, error: 'Password lama salah!' };
+  saveSetting('admin_pass', newPassword);
+  return { success: true };
+}
+
+export function backupDatabase() {
+  if (!dbPath) return { success: false, error: 'DB path not set' };
+  const dir = path.join(path.dirname(dbPath), 'backups');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  const ts = new Date().toISOString().replace(/[:.]/g, '-');
+  const backupPath = path.join(dir, `kasir-backup-${ts}.db`);
+  try {
+    db.exec('PRAGMA wal_checkpoint(TRUNCATE);');
+    fs.copyFileSync(dbPath, backupPath);
+    return { success: true, path: backupPath };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 export function handleAction(action, payload) {
   switch (action) {
     case 'fetch_data':
@@ -349,6 +379,12 @@ export function handleAction(action, payload) {
       return deleteTxn(payload);
     case 'clear_all_txns':
       return clearAllTxns();
+    case 'verify_admin':
+      return verifyAdminPassword(payload.password);
+    case 'change_admin_pass':
+      return changeAdminPassword(payload.old_password, payload.new_password);
+    case 'backup_db':
+      return backupDatabase();
     default:
       return { error: `Unknown action: ${action}` };
   }

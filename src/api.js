@@ -61,3 +61,6 @@ export const saveUser = (username, password, role) => apiCall('save_user', { use
 export const deleteUser = (username) => apiCall('delete_user', { username });
 export const deleteTxn = (data) => apiCall('delete_txn', typeof data === 'object' ? data : { id: data });
 export const clearAllTxns = () => apiCall('clear_all_txns');
+export const verifyAdminPassword = (password) => apiCall('verify_admin', { password });
+export const changeAdminPassword = (oldPassword, newPassword) => apiCall('change_admin_pass', { old_password: oldPassword, new_password: newPassword });
+export const backupDatabase = () => apiCall('backup_db');

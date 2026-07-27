@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ITEMS, fmtRp } from '../App';
 import { getShiftDate } from '../lib/shift';
-import { saveUser, deleteUser } from '../api';
+import { saveUser, deleteUser, changeAdminPassword, backupDatabase } from '../api';
 
 const APP_VERSION = '1.4.0';
 const DEPLOY_DATE = '27 Jul 2026';
@@ -13,7 +13,6 @@ function SettingsTab({
   currentShiftUser,
   theme, 
   onThemeChange, 
-  adminPassword, 
   onUpdateAdminPassword, 
   sbConnected, 
   lastSyncTime, 
@@ -109,22 +108,40 @@ function SettingsTab({
 
   const totalUnitsRented = itemStats.reduce((s, i) => s + i.rentalCount, 0);
 
-  const handleChangePass = () => {
+  const handleChangePass = async () => {
     const oldP = oldPassInput.trim();
     const newP = newPassInput.trim();
     if (!newP || !oldP) {
       alert('Masukkan password lama dan baru!');
       return;
     }
-    if (oldP !== adminPassword) {
-      alert('Password lama salah!');
-      return;
+    if (!window.confirm('Ubah password admin?')) return;
+    try {
+      const res = await changeAdminPassword(oldP, newP);
+      if (res?.success) {
+        setOldPassInput('');
+        setNewPassInput('');
+        alert('Password Admin berhasil diperbarui!');
+      } else {
+        alert(res?.error || 'Gagal mengubah password admin.');
+      }
+    } catch (err) {
+      console.error('Change password failed:', err);
+      alert('Gagal terhubung ke server.');
     }
-    if (window.confirm('Ubah password admin?')) {
-      onUpdateAdminPassword(newP);
-      setOldPassInput('');
-      setNewPassInput('');
-      alert('Password Admin berhasil diperbarui!');
+  };
+
+  const handleBackup = async () => {
+    try {
+      const res = await backupDatabase();
+      if (res?.success) {
+        alert(`Backup berhasil!\n${res.path}`);
+      } else {
+        alert('Backup gagal: ' + (res?.error || 'Unknown error'));
+      }
+    } catch (err) {
+      console.error('Backup failed:', err);
+      alert('Gagal terhubung ke server.');
     }
   };
 
@@ -389,29 +406,38 @@ function SettingsTab({
               </div>
 
               {/* Password Admin Change */}
-              <div className="p-3 border rounded" style={{ background: 'var(--bg3)' }}>
+              <div className="p-3 border rounded mb-3" style={{ background: 'var(--bg3)' }}>
                 <div className="fw-bold small text-light mb-2"><i className="bi bi-shield-lock-fill me-1 clr-red"></i>Password Akun Admin</div>
                 <div className="d-flex flex-column gap-2">
-                  <input 
-                    type="password" 
+                  <input
+                    type="password"
                     value={oldPassInput}
                     onChange={(e) => setOldPassInput(e.target.value)}
-                    className="cfield flex-fill" 
-                    placeholder="Password lama..." 
+                    className="cfield flex-fill"
+                    placeholder="Password lama..."
                     style={{ paddingLeft: '12px' }}
                   />
                   <div className="input-group">
-                    <input 
-                      type="password" 
+                    <input
+                      type="password"
                       value={newPassInput}
                       onChange={(e) => setNewPassInput(e.target.value)}
-                      className="cfield flex-fill" 
-                      placeholder="Password baru..." 
+                      className="cfield flex-fill"
+                      placeholder="Password baru..."
                       style={{ paddingLeft: '12px' }}
                     />
                     <button className="btn-sec ms-2 py-2 px-3 border rounded text-white" style={{ background: 'var(--bg-sec)' }} onClick={handleChangePass}>Ubah</button>
                   </div>
                 </div>
+              </div>
+
+              {/* Backup Database */}
+              <div className="p-3 border rounded" style={{ background: 'var(--bg3)' }}>
+                <div className="fw-bold small text-light mb-2"><i className="bi bi-database-fill me-1 clr-green"></i>Backup Database</div>
+                <p className="small text-secondary mb-2">Backup otomatis setiap jam. Backup manual juga tersedia.</p>
+                <button className="btn btn-sm btn-outline-success w-100" onClick={handleBackup}>
+                  <i className="bi bi-cloud-arrow-down-fill me-1"></i>Backup Manual Sekarang
+                </button>
               </div>
             </div>
           </div>

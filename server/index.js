@@ -1,7 +1,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { initDb, handleAction, fetchAllData } from './db.js';
+import { initDb, handleAction, fetchAllData, backupDatabase } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,5 +85,19 @@ if (process.env.NODE_ENV !== 'test') {
   const server = createHttpServer();
   server.listen(PORT, () => {
     console.log(`🚀 Kasir DB Server running on http://localhost:${PORT}`);
+    const result = backupDatabase();
+    if (result.success) {
+      console.log(`💾 Initial backup created: ${result.path}`);
+    } else {
+      console.warn('⚠️ Initial backup failed:', result.error);
+    }
   });
+
+  // Hourly automatic backup
+  setInterval(() => {
+    const result = backupDatabase();
+    if (result.success) {
+      console.log(`💾 Hourly backup: ${result.path}`);
+    }
+  }, 3600000);
 }

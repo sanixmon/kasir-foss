@@ -1,23 +1,25 @@
 import React, { useState } from 'react';
 
-function PasswordVerificationModal({ adminPassword, onVerifySuccess, onClose }) {
+function PasswordVerificationModal({ onVerify, onVerifySuccess, onClose }) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (isSubmitting) return;
     setIsSubmitting(true);
-    if (password === adminPassword) {
-      setError(false);
-      try {
+    setError(false);
+    try {
+      const res = await onVerify(password);
+      if (res?.valid) {
         onVerifySuccess();
-      } finally {
-        setTimeout(() => setIsSubmitting(false), 800);
+      } else {
+        setError(true);
       }
-    } else {
+    } catch {
       setError(true);
-      setIsSubmitting(false);
+    } finally {
+      setTimeout(() => setIsSubmitting(false), 800);
     }
   };
 

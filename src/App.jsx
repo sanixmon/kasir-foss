@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './components/LoginPage';
-import { fetchAllData, addSession, editSession, claimSession, deleteSession, deleteTxn, clearAllTxns, saveSetting } from './api';
+import { fetchAllData, addSession, editSession, claimSession, deleteSession, deleteTxn, clearAllTxns, saveSetting, verifyAdminPassword, changeAdminPassword } from './api';
 import { checkShiftExpiration, getShiftDate } from './lib/shift';
 import DashboardTab from './components/DashboardTab';
 import HistoryTab from './components/HistoryTab';
@@ -131,7 +131,6 @@ function App() {
   const [activeSessions, setActiveSessions] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [users, setUsers] = useState([]);
-  const [adminPassword, setAdminPassword] = useState('admin');
   const [shiftQueueNo, setShiftQueueNo] = useState(0);
   const [currentShiftUser, setCurrentShiftUser] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState(null);
@@ -205,12 +204,6 @@ function App() {
 
         if (Array.isArray(data.users)) {
           setUsers(data.users);
-        }
-
-        if (data.settings && typeof data.settings === 'object') {
-          if (data.settings.admin_pass) {
-            setAdminPassword(data.settings.admin_pass);
-          }
         }
 
         setApiConnected(true);
@@ -538,13 +531,8 @@ function App() {
     }
   };
 
-  const handleUpdateAdminPassword = async (newPass) => {
-    setAdminPassword(newPass);
-    try {
-      await saveSetting('admin_pass', newPass);
-    } catch (e) {
-      console.warn('Failed to save admin password to server:', e);
-    }
+  const handleUpdateAdminPassword = async (oldPass, newPass) => {
+    return changeAdminPassword(oldPass, newPass);
   };
 
   const handleThemeChange = (newTheme) => {
@@ -570,12 +558,17 @@ function App() {
           setCurrentUserRole('cashier');
           localStorage.setItem('kw_userRole', 'cashier');
         }}
-        onSelectAdmin={(pwd) => {
-          if (pwd === adminPassword) {
-            setCurrentUserRole('admin');
-            localStorage.setItem('kw_userRole', 'admin');
-          } else {
-            alert('Password salah!');
+        onSelectAdmin={async (pwd) => {
+          try {
+            const res = await verifyAdminPassword(pwd);
+            if (res?.valid) {
+              setCurrentUserRole('admin');
+              localStorage.setItem('kw_userRole', 'admin');
+            } else {
+              alert('Password salah!');
+            }
+          } catch {
+            alert('Gagal terhubung ke server.');
           }
         }}
       />
@@ -704,7 +697,6 @@ function App() {
             currentShiftUser={currentShiftUser}
             theme={theme}
             onThemeChange={handleThemeChange}
-            adminPassword={adminPassword}
             onUpdateAdminPassword={handleUpdateAdminPassword}
             sbConnected={apiConnected}
             lastSyncTime={lastSyncTime}
@@ -756,7 +748,7 @@ function App() {
 
       {pendingAction && (
         <PasswordVerificationModal
-          adminPassword={adminPassword}
+          onVerify={verifyAdminPassword}
           onClose={() => setPendingAction(null)}
           onVerifySuccess={handleVerifySuccess}
         />
