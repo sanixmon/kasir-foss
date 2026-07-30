@@ -16,7 +16,8 @@
     "@google/gemini-cli": "^0.52.0",
     "@supabase/supabase-js": "^2.110.3",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "sweetalert2": "^11.26.25"
   },
   "devDependencies": {
     "@google/clasp": "^3.3.0",

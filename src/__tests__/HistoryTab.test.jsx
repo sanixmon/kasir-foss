@@ -42,9 +42,9 @@ describe('HistoryTab - Immutability & Role Based Permissions', () => {
     expect(screen.queryByRole('option', { name: 'Bulanan' })).toBeNull();
     expect(screen.queryByText('Export')).toBeNull();
 
-    // Verify row action buttons: Print Struk and Hapus Bill (which triggers admin verification) are present; Edit is hidden
+    // Verify row action buttons: Print Struk is present; Hapus Bill and Edit are hidden for cashier
     expect(screen.getByTitle('Print Struk')).toBeInTheDocument();
-    expect(screen.getByTitle('Hapus Bill')).toBeInTheDocument();
+    expect(screen.queryByTitle('Hapus Bill')).toBeNull();
     expect(screen.queryByTitle('Edit Bill / Transaksi')).toBeNull();
   });
 

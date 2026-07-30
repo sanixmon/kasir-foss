@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ITEMS } from '../App';
+import { swalWarning } from '../lib/swal';
 
 function EditActiveSessionModal({ session, onClose, onSave }) {
   const [nama, setNama] = useState(session?.nama || '');
@@ -30,12 +31,12 @@ function EditActiveSessionModal({ session, onClose, onSave }) {
     if (isSubmitting) return;
     const trimmedNama = nama.trim();
     if (!trimmedNama) {
-      alert('Nama tidak boleh kosong!');
+      swalWarning('Nama Kosong', 'Nama tidak boleh kosong!');
       return;
     }
     const finalItems = editItems.filter(i => i.qty > 0);
     if (!finalItems.length) {
-      alert('Pilih minimal satu item!');
+      swalWarning('Item Belum Dipilih', 'Pilih minimal satu item!');
       return;
     }
 

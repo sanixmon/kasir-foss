@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ITEMS, fmtRp, fmtDur } from '../App';
+import { swalWarning } from '../lib/swal';
 
 function LiveSessionTimer({ session, onSelesaiSewa, onShowQR, onPrintSesi, onEditSesi }) {
   const safeStart = (session.startTime && Number(session.startTime) > 1577836800000) ? Number(session.startTime) : Date.now();
@@ -98,10 +99,10 @@ function DashboardTab({ activeSessions, onStartSewa, getImgUrl, onSelesaiSewa, o
     if (e && e.preventDefault) e.preventDefault();
     if (isSubmitting) return;
     const nama = inputNama.trim();
-    if (!nama) { alert('Masukkan nama penyewa!'); return; }
+    if (!nama) { swalWarning('Nama Kosong', 'Masukkan nama penyewa!'); return; }
     const items = ITEMS.filter(i => (selectedQty[i.code] || 0) > 0)
                        .map(i => ({ code: i.code, qty: selectedQty[i.code] }));
-    if (items.length === 0) { alert('Pilih minimal satu item!'); return; }
+    if (items.length === 0) { swalWarning('Item Belum Dipilih', 'Pilih minimal satu item!'); return; }
     
     setIsSubmitting(true);
     try {

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import { swalSuccess } from '../lib/swal';
 import { ITEMS, fmtRp } from '../App';
 
 function QRCodeModal({ session, onClose }) {
@@ -33,7 +34,7 @@ function QRCodeModal({ session, onClose }) {
 
   const copyTrackUrl = () => {
     navigator.clipboard.writeText(trackUrl)
-      .then(() => alert('Link disalin ke clipboard!'))
+      .then(() => swalSuccess('Link Disalin!', 'Link tracking berhasil disalin ke clipboard.'))
       .catch(() => {
         const el = document.createElement('textarea');
         el.value = trackUrl;
@@ -41,7 +42,7 @@ function QRCodeModal({ session, onClose }) {
         el.select();
         document.execCommand('copy');
         document.body.removeChild(el);
-        alert('Link disalin!');
+        swalSuccess('Link Disalin!');
       });
   };
 

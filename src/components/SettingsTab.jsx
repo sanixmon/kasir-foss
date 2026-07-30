@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { ITEMS, fmtRp } from '../App';
 import { getShiftDate } from '../lib/shift';
-import { saveUser, deleteUser, changeAdminPassword, backupDatabase } from '../api';
+import { changeAdminPassword, backupDatabase } from '../api';
+import { swalSuccess, swalError, swalWarning, swalConfirm } from '../lib/swal';
+import SettingsAnalytics from './SettingsAnalytics';
+import SettingsUsers from './SettingsUsers';
 
 const APP_VERSION = '1.4.0';
 const DEPLOY_DATE = '27 Jul 2026';
@@ -29,105 +32,27 @@ function SettingsTab({
   const [newPassInput, setNewPassInput] = useState('');
   const [oldPassInput, setOldPassInput] = useState('');
 
-  // User management state
-  const [newUserUsername, setNewUserUsername] = useState('');
-  const [newUserPassword, setNewUserPassword] = useState('');
-  const [newUserRole, setNewUserRole] = useState('cashier');
-  const [isSavingUser, setIsSavingUser] = useState(false);
-
-  // Delete user handler
-  const handleDeleteUser = async (username) => {
-    if (!window.confirm(`Hapus akun "${username}"?`)) return;
-    try {
-      const res = await deleteUser(username);
-      if (res && !res.error) {
-        alert(`Akun "${username}" berhasil dihapus!`);
-        if (onSyncPull) onSyncPull();
-      } else {
-        alert('Gagal menghapus akun: ' + (res?.error || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error('Delete user failed:', err);
-      alert('Gagal terhubung ke server untuk menghapus akun.');
-    }
-  };
-
-  const todayShift = getShiftDate();
-
-  // Filter today's transactions based on shift date
-  const todayTxns = transactions.filter(t => {
-    if (!t) return false;
-    if (t.tanggal && t.tanggal.startsWith(todayShift)) return true;
-    const startShift = getShiftDate(t.startTime);
-    return startShift && startShift.startsWith(todayShift);
-  });
-
-  // Financial calculations
-  const todayRevenue = todayTxns.reduce((s, t) => s + (t.totalAll || 0), 0);
-  const todayPokok = todayTxns.reduce((s, t) => s + (t.totalBase || 0), 0);
-  const todayOT = todayTxns.reduce((s, t) => s + (t.totalOT || 0), 0);
-  
-  const todayPokokCash = todayTxns.reduce((s, t) => s + ((t.payAwal || 'cash') === 'cash' ? (t.totalBase || 0) : 0), 0);
-  const todayPokokQris = todayTxns.reduce((s, t) => s + ((t.payAwal || 'cash') === 'qris' ? (t.totalBase || 0) : 0), 0);
-  const todayOTCash = todayTxns.reduce((s, t) => s + (t.cash || 0), 0);
-  const todayOTQris = todayTxns.reduce((s, t) => s + (t.qris || 0), 0);
-
-  const totalCashAll = todayPokokCash + todayOTCash;
-  const totalQrisAll = todayPokokQris + todayOTQris;
-  const cashPct = todayRevenue > 0 ? Math.round((totalCashAll / todayRevenue) * 100) : 50;
-  const qrisPct = todayRevenue > 0 ? 100 - cashPct : 50;
-
-  // Item Rental Analytics
-  const itemStats = ITEMS.map(item => {
-    let rentalCount = 0;
-    let revenueSum = 0;
-
-    todayTxns.forEach(t => {
-      let itemsList = [];
-      if (Array.isArray(t.items)) {
-        itemsList = t.items;
-      } else if (typeof t.items === 'string') {
-        const parts = t.items.split(',');
-        parts.forEach(p => {
-          const m = p.trim().match(/^(.+?)(?:[x\xD7](\d+))?$/i);
-          if (m) itemsList.push({ code: m[1].trim(), qty: Number(m[2] || 1) });
-        });
-      }
-
-      itemsList.forEach(it => {
-        if (it && it.code === item.code) {
-          const q = Number(it.qty || 1);
-          rentalCount += q;
-          revenueSum += (item.priceHour * q);
-        }
-      });
-    });
-
-    return { ...item, rentalCount, revenueSum };
-  });
-
-  const totalUnitsRented = itemStats.reduce((s, i) => s + i.rentalCount, 0);
-
   const handleChangePass = async () => {
     const oldP = oldPassInput.trim();
     const newP = newPassInput.trim();
     if (!newP || !oldP) {
-      alert('Masukkan password lama dan baru!');
+      swalWarning('Form Kosong', 'Masukkan password lama dan baru!');
       return;
     }
-    if (!window.confirm('Ubah password admin?')) return;
+    const ok = await swalConfirm('Ubah Password Admin?', 'Password lama akan diganti.', 'Ya, Ubah!', 'question');
+    if (!ok) return;
     try {
       const res = await changeAdminPassword(oldP, newP);
       if (res?.success) {
         setOldPassInput('');
         setNewPassInput('');
-        alert('Password Admin berhasil diperbarui!');
+        swalSuccess('Password Berhasil Diperbarui!');
       } else {
-        alert(res?.error || 'Gagal mengubah password admin.');
+        swalError('Gagal Mengubah', res?.error || 'Gagal mengubah password admin.');
       }
     } catch (err) {
       console.error('Change password failed:', err);
-      alert('Gagal terhubung ke server.');
+      swalError('Koneksi Gagal', 'Tidak dapat terhubung ke server.');
     }
   };
 
@@ -135,42 +60,13 @@ function SettingsTab({
     try {
       const res = await backupDatabase();
       if (res?.success) {
-        alert(`Backup berhasil!\n${res.path}`);
+        swalSuccess('Backup Berhasil!', res.path);
       } else {
-        alert('Backup gagal: ' + (res?.error || 'Unknown error'));
+        swalError('Backup Gagal', res?.error || 'Unknown error');
       }
     } catch (err) {
       console.error('Backup failed:', err);
-      alert('Gagal terhubung ke server.');
-    }
-  };
-
-  const handleSaveUser = async (e) => {
-    e.preventDefault();
-    const uname = newUserUsername.trim();
-    const pwd = newUserPassword.trim();
-
-    if (!uname || !pwd) {
-      alert('Masukkan username dan password kasir!');
-      return;
-    }
-
-    try {
-      setIsSavingUser(true);
-      const res = await saveUser(uname, pwd, newUserRole);
-      if (res && !res.error) {
-        alert(`Pengguna / Kasir "${uname}" berhasil disimpan di Cloud!`);
-        setNewUserUsername('');
-        setNewUserPassword('');
-        if (onSyncPull) onSyncPull();
-      } else {
-        alert('Gagal menyimpan kasir: ' + (res?.error || 'Unknown error'));
-      }
-    } catch (err) {
-      console.error('Save user failed:', err);
-      alert('Gagal terhubung ke server untuk menyimpan pengguna.');
-    } finally {
-      setIsSavingUser(false);
+      swalError('Koneksi Gagal', 'Tidak dapat terhubung ke server.');
     }
   };
 
@@ -181,10 +77,9 @@ function SettingsTab({
     }
   };
 
-  const handleResetImg = (code) => {
-    if (window.confirm('Reset ke gambar default?')) {
-      onResetItemImg(code);
-    }
+  const handleResetImg = async (code) => {
+    const ok = await swalConfirm('Reset Gambar?', 'Gambar akan dikembalikan ke default.', 'Ya, Reset!', 'question');
+    if (ok) onResetItemImg(code);
   };
 
   return (
@@ -192,183 +87,14 @@ function SettingsTab({
       <div className="row g-3">
 
         {/* ─── SECTION 1: EXECUTIVE DASHBOARD ANALYTICS ───────────────────── */}
-        <div className="col-12">
-          <div className="panel" style={{ borderLeft: '4px solid var(--yellow)' }}>
-            <div className="panel-head d-flex justify-content-between align-items-center flex-wrap gap-2">
-              <div className="d-flex align-items-center gap-2">
-                <i className="bi bi-speedometer2 fs-5 clr-yellow"></i>
-                <span className="fw-bold fs-5">Dashboard Analytics Admin</span>
-              </div>
-              <div className="badge bg-dark border border-secondary text-secondary px-3 py-1 font-monospace">
-                Shift Date: <span className="text-warning fw-bold">{todayShift}</span>
-              </div>
-            </div>
-            <div className="panel-body">
-              
-              {/* Financial Metric Cards */}
-              <div className="row g-3 mb-3">
-                <div className="col-12 col-sm-6 col-xl-3">
-                  <div className="p-3 rounded-3 border" style={{ background: 'var(--bg3)' }}>
-                    <div className="text-secondary small font-monospace mb-1">TOTAL OMZET SHIFT INI</div>
-                    <div className="fs-3 fw-extrabold text-light mb-1">{fmtRp(todayRevenue)}</div>
-                    <div className="small text-muted">{todayTxns.length} Transaksi Selesai</div>
-                  </div>
-                </div>
-
-                <div className="col-12 col-sm-6 col-xl-3">
-                  <div className="p-3 rounded-3 border" style={{ background: 'var(--bg3)' }}>
-                    <div className="text-secondary small font-monospace mb-1">SEWA POKOK</div>
-                    <div className="fs-3 fw-bold clr-cyan mb-1">{fmtRp(todayPokok)}</div>
-                    <div className="small text-secondary">C: {fmtRp(todayPokokCash)} | Q: {fmtRp(todayPokokQris)}</div>
-                  </div>
-                </div>
-
-                <div className="col-12 col-sm-6 col-xl-3">
-                  <div className="p-3 rounded-3 border" style={{ background: 'var(--bg3)' }}>
-                    <div className="text-secondary small font-monospace mb-1">OVERTIME (OVERSTAY)</div>
-                    <div className="fs-3 fw-bold clr-yellow mb-1">{fmtRp(todayOT)}</div>
-                    <div className="small text-secondary">Denda OT Terkumpul</div>
-                  </div>
-                </div>
-
-                <div className="col-12 col-sm-6 col-xl-3">
-                  <div className="p-3 rounded-3 border" style={{ background: 'var(--bg3)' }}>
-                    <div className="text-secondary small font-monospace mb-1">ARMADA AKTIF BEKERJA</div>
-                    <div className="fs-3 fw-bold text-success mb-1">{activeSessions.length} Sesi</div>
-                    <div className="small text-secondary">Petugas Shift: <b className="text-light">{currentShiftUser || '-'}</b></div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Ratio Progress Bar */}
-              <div className="p-3 rounded-3 border mb-3" style={{ background: 'var(--bg3)' }}>
-                <div className="d-flex justify-content-between align-items-center mb-2">
-                  <span className="fw-bold small text-secondary">DISTRIBUSI PEMBAYARAN SHIFT</span>
-                  <span className="small text-secondary">
-                    Cash: <b className="clr-green">{fmtRp(totalCashAll)} ({cashPct}%)</b> | QRIS: <b className="clr-cyan">{fmtRp(totalQrisAll)} ({qrisPct}%)</b>
-                  </span>
-                </div>
-                <div className="progress" style={{ height: '10px', backgroundColor: 'var(--bg)' }}>
-                  <div className="progress-bar bg-success" role="progressbar" style={{ width: `${cashPct}%` }} title={`Cash: ${cashPct}%`}></div>
-                  <div className="progress-bar bg-info" role="progressbar" style={{ width: `${qrisPct}%` }} title={`QRIS: ${qrisPct}%`}></div>
-                </div>
-              </div>
-
-              {/* Vehicle Popularity & Revenue Share */}
-              <div className="row g-2">
-                <div className="col-12"><div className="fw-bold small text-secondary mb-2"><i className="bi bi-bar-chart-line-fill me-1 clr-cyan"></i>Performa Sewa Kendaraan Shift Ini</div></div>
-                {itemStats.map(item => {
-                  const sharePct = totalUnitsRented > 0 ? Math.round((item.rentalCount / totalUnitsRented) * 100) : 0;
-                  return (
-                    <div className="col-12 col-md-6 col-xl-4" key={item.code}>
-                      <div className="p-2 border rounded-3 d-flex align-items-center justify-content-between gap-2" style={{ background: 'var(--bg)' }}>
-                        <div className="d-flex align-items-center gap-2">
-                          <span style={{ fontSize: '1.5rem' }}>{item.emoji}</span>
-                          <div>
-                            <div className="fw-bold small text-light">{item.code} - {item.name}</div>
-                            <div className="small text-secondary">{item.rentalCount} Unit Disewa ({sharePct}%)</div>
-                          </div>
-                        </div>
-                        <div className="text-end">
-                          <div className="fw-bold small clr-yellow">{fmtRp(item.revenueSum)}</div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-            </div>
-          </div>
-        </div>
+        <SettingsAnalytics
+          transactions={transactions}
+          activeSessions={activeSessions}
+          currentShiftUser={currentShiftUser}
+        />
 
         {/* ─── SECTION 2: USER & CASHIER MANAGEMENT ─────────────────────────── */}
-        <div className="col-12 col-xl-6">
-          <div className="panel h-100">
-            <div className="panel-head"><i className="bi bi-people-fill clr-cyan"></i><span>Manajemen Kasir &amp; Pengguna</span></div>
-            <div className="panel-body">
-              <form onSubmit={handleSaveUser} className="mb-4 p-3 border rounded-3" style={{ background: 'var(--bg3)' }}>
-                <div className="fw-bold small mb-2 text-light"><i className="bi bi-person-plus-fill me-1 clr-green"></i>Tambah / Reset Password Kasir</div>
-                <div className="row g-2">
-                  <div className="col-12 col-sm-5">
-                    <input 
-                      type="text" 
-                      className="cfield w-100" 
-                      placeholder="Username kasir (cth: akbar)" 
-                      value={newUserUsername}
-                      onChange={(e) => setNewUserUsername(e.target.value)}
-                    />
-                  </div>
-                  <div className="col-12 col-sm-4">
-                    <input 
-                      type="password" 
-                      className="cfield w-100" 
-                      placeholder="Password baru" 
-                      value={newUserPassword}
-                      onChange={(e) => setNewUserPassword(e.target.value)}
-                    />
-                  </div>
-                  <div className="col-12 col-sm-3">
-                    <select 
-                      className="cfield w-100" 
-                      value={newUserRole}
-                      onChange={(e) => setNewUserRole(e.target.value)}
-                    >
-                      <option value="cashier">Kasir</option>
-                      <option value="admin">Admin</option>
-                    </select>
-                  </div>
-                  <div className="col-12 mt-2">
-                    <button 
-                      type="submit" 
-                      className="btn btn-sm btn-success w-100 font-weight-bold" 
-                      disabled={isSavingUser}
-                    >
-                      {isSavingUser ? 'Menyimpan...' : 'Simpan User ke Cloud Backend'}
-                    </button>
-                  </div>
-                </div>
-              </form>
-
-              <div className="fw-bold small text-secondary mb-2">Daftar Akun Kasir Terdaftar</div>
-              <div className="row row-cols-2 row-cols-sm-4 g-2">
-                {users.map(u => (
-                  <div className="col" key={u.username}>
-                    <div className="p-2 border rounded-3 text-center position-relative" style={{ background: 'var(--bg)' }}>
-                      <div className="position-absolute top-0 end-0 d-flex gap-1" style={{ margin: '4px' }}>
-                        <button
-                          type="button"
-                          className="btn btn-sm p-0"
-                          style={{ color: 'var(--yellow)', fontSize: '0.8rem', lineHeight: 1 }}
-                          title="Edit / Reset Password Kasir Ini"
-                          onClick={() => {
-                            setNewUserUsername(u.username);
-                            setNewUserRole(u.role || 'cashier');
-                            setNewUserPassword(u.password || '');
-                          }}
-                        >
-                          <i className="bi bi-pencil-square"></i>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-sm p-0"
-                          style={{ color: 'var(--red)', fontSize: '0.8rem', lineHeight: 1 }}
-                          title="Hapus akun"
-                          onClick={() => handleDeleteUser(u.username)}
-                        >
-                          <i className="bi bi-x-circle-fill"></i>
-                        </button>
-                      </div>
-                      <i className="bi bi-person-circle fs-5 clr-cyan d-block mb-1"></i>
-                      <div className="fw-bold small text-light">{u.username}</div>
-                      <span className={`badge ${u.role === 'admin' ? 'bg-danger' : 'bg-secondary'} opacity-75`} style={{ fontSize: '0.65rem' }}>{u.role || 'cashier'}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+        <SettingsUsers users={users} onSyncPull={onSyncPull} />
 
         {/* ─── SECTION 3: SYSTEM SYNC & CLOUD CONTROLS ───────────────────────── */}
         <div className="col-12 col-xl-6">
@@ -407,7 +133,9 @@ function SettingsTab({
 
               {/* Password Admin Change */}
               <div className="p-3 border rounded mb-3" style={{ background: 'var(--bg3)' }}>
-                <div className="fw-bold small text-light mb-2"><i className="bi bi-shield-lock-fill me-1 clr-red"></i>Password Akun Admin</div>
+                <div className="fw-bold small mb-2" style={{ color: 'var(--text)' }}>
+                  <i className="bi bi-shield-lock-fill me-1 clr-red"></i>Password Akun Admin
+                </div>
                 <div className="d-flex flex-column gap-2">
                   <input
                     type="password"
@@ -426,14 +154,16 @@ function SettingsTab({
                       placeholder="Password baru..."
                       style={{ paddingLeft: '12px' }}
                     />
-                    <button className="btn-sec ms-2 py-2 px-3 border rounded text-white" style={{ background: 'var(--bg-sec)' }} onClick={handleChangePass}>Ubah</button>
+                    <button className="btn-sec ms-2 py-2 px-3 border rounded" onClick={handleChangePass}>Ubah</button>
                   </div>
                 </div>
               </div>
 
               {/* Backup Database */}
               <div className="p-3 border rounded" style={{ background: 'var(--bg3)' }}>
-                <div className="fw-bold small text-light mb-2"><i className="bi bi-database-fill me-1 clr-green"></i>Backup Database</div>
+                <div className="fw-bold small mb-2" style={{ color: 'var(--text)' }}>
+                  <i className="bi bi-database-fill me-1 clr-green"></i>Backup Database
+                </div>
                 <p className="small text-secondary mb-2">Backup otomatis setiap jam. Backup manual juga tersedia.</p>
                 <button className="btn btn-sm btn-outline-success w-100" onClick={handleBackup}>
                   <i className="bi bi-cloud-arrow-down-fill me-1"></i>Backup Manual Sekarang

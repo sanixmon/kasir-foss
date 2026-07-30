@@ -59,6 +59,17 @@ export function initDb(pathArg) {
       password TEXT,
       role TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS deletion_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      txn_id TEXT,
+      txn_no INTEGER,
+      txn_nama TEXT,
+      txn_tanggal TEXT,
+      txn_total_all REAL DEFAULT 0,
+      deleted_at INTEGER,
+      deleted_by TEXT DEFAULT 'admin'
+    );
   `);
 
   return db;
@@ -329,6 +340,47 @@ export function deleteTxn(payload) {
   return { success: true };
 }
 
+export function addDeletionLog(payload) {
+  try {
+    const stmt = db.prepare(`
+      INSERT INTO deletion_logs (txn_id, txn_no, txn_nama, txn_tanggal, txn_total_all, deleted_at, deleted_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      payload.txnId || null,
+      payload.txnNo || null,
+      payload.txnNama || '',
+      payload.txnTanggal || '',
+      payload.txnTotalAll || 0,
+      payload.deletedAt || Date.now(),
+      payload.deletedBy || 'admin'
+    );
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
+export function getDeletionLogs() {
+  try {
+    const rows = db.prepare('SELECT * FROM deletion_logs ORDER BY deleted_at DESC LIMIT 200').all();
+    return {
+      logs: rows.map(r => ({
+        id: r.id,
+        txnId: r.txn_id,
+        txnNo: r.txn_no,
+        txnNama: r.txn_nama,
+        txnTanggal: r.txn_tanggal,
+        txnTotalAll: r.txn_total_all,
+        deletedAt: r.deleted_at,
+        deletedBy: r.deleted_by
+      }))
+    };
+  } catch (e) {
+    return { logs: [] };
+  }
+}
+
 export function verifyAdminPassword(password) {
   const row = db.prepare("SELECT value FROM settings WHERE key = 'admin_pass'").get();
   if (!row) return { valid: false };
@@ -385,6 +437,10 @@ export function handleAction(action, payload) {
       return changeAdminPassword(payload.old_password, payload.new_password);
     case 'backup_db':
       return backupDatabase();
+    case 'add_deletion_log':
+      return addDeletionLog(payload);
+    case 'get_deletion_logs':
+      return getDeletionLogs();
     default:
       return { error: `Unknown action: ${action}` };
   }

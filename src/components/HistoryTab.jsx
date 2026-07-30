@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { fmtRp } from '../App';
 import { aggregateHistory } from '../lib/history';
+import { swalWarning } from '../lib/swal';
 
 const SHIFT_CODE_MAP = { 
   'Akbar':'AK', 'Rani':'RN', 'Monica':'MO', 'Aldy':'AL', 
@@ -61,12 +62,12 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, cur
   } = aggregateHistory(transactions, effectiveMode, filterValue, sortOrder);
 
   const handleExport = () => {
-    if (filtered.length === 0) { 
-      alert('Tidak ada data untuk diexport'); 
-      return; 
+    if (filtered.length === 0) {
+      swalWarning('Data Kosong', 'Tidak ada data untuk diexport');
+      return;
     }
     if (!window.XLSX || !window.XLSX.utils) {
-      alert('Library Excel (XLSX) belum dimuat. Mohon periksa koneksi internet atau muat ulang halaman.');
+      swalWarning('Library Belum Dimuat', 'Library Excel (XLSX) belum dimuat. Mohon muat ulang halaman.');
       return;
     }
     const dataRows = filtered.map(t => ({
@@ -102,7 +103,7 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, cur
             {isCashier ? (
               <div className="badge-shift bg-transparent border border-secondary text-secondary d-flex align-items-center gap-2 px-3 py-1 rounded-3 font-monospace" style={{ fontSize: '0.85rem' }}>
                 <i className="bi bi-calendar2-check clr-cyan fs-6"></i>
-                <span className="fw-bold text-light">Hari Ini ({getLocalDateString()})</span>
+                <span className="fw-bold" style={{ color: 'var(--text)' }}>Hari Ini ({getLocalDateString()})</span>
                 <span className="badge bg-secondary opacity-75 ms-1">Mode Kasir</span>
               </div>
             ) : (
@@ -222,7 +223,9 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, cur
                         <td data-label="Grand Total"><span style={{ fontWeight: 800, color: 'var(--yellow)' }}>{fmtRp(t.totalAll || ((t.totalBase || 0) + (t.grandTotal || 0)))}</span></td>
                         <td>
                           <button className="act-btn me-2" onClick={() => onPrintTxn(t)} title="Print Struk"><i className="bi bi-printer-fill text-secondary"></i></button>
-                          <button className="act-btn" onClick={() => onDeleteTxn(t)} title="Hapus Bill"><i className="bi bi-trash3-fill clr-red"></i></button>
+                          {!isCashier && (
+                            <button className="act-btn" onClick={() => onDeleteTxn(t)} title="Hapus Bill"><i className="bi bi-trash3-fill clr-red"></i></button>
+                          )}
                         </td>
                       </tr>
                     );

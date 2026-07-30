@@ -64,3 +64,5 @@ export const clearAllTxns = () => apiCall('clear_all_txns');
 export const verifyAdminPassword = (password) => apiCall('verify_admin', { password });
 export const changeAdminPassword = (oldPassword, newPassword) => apiCall('change_admin_pass', { old_password: oldPassword, new_password: newPassword });
 export const backupDatabase = () => apiCall('backup_db');
+export const getDeletionLogs = () => apiCall('get_deletion_logs', {});
+export const addDeletionLog = (payload) => apiCall('add_deletion_log', payload);

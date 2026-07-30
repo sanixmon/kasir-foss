@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './components/LoginPage';
-import { fetchAllData, addSession, editSession, claimSession, deleteSession, deleteTxn, clearAllTxns, saveSetting, verifyAdminPassword, changeAdminPassword } from './api';
+import { fetchAllData, addSession, editSession, claimSession, deleteSession, deleteTxn, clearAllTxns, saveSetting, verifyAdminPassword, changeAdminPassword, addDeletionLog, getDeletionLogs } from './api';
+import { swalSuccess, swalError, swalWarning, swalConfirm } from './lib/swal';
 import { checkShiftExpiration, getShiftDate } from './lib/shift';
+import { fmtRp, fmtDur, generateShortId, safeSetItem, normalizeItems, normalizeSession, normalizeTxn } from './lib/utils';
+import { ITEMS } from './lib/items';
 import DashboardTab from './components/DashboardTab';
 import HistoryTab from './components/HistoryTab';
+import DeletionLogTab from './components/DeletionLogTab';
 import SettingsTab from './components/SettingsTab';
 import FooterNav from './components/FooterNav';
 import RoleSelection from './components/RoleSelection';
@@ -16,114 +20,8 @@ import EditActiveSessionModal from './components/EditActiveSessionModal';
 import TrackingPage from './components/TrackingPage';
 import LiveClock from './components/LiveClock';
 
-export const ITEMS = [
-  { code:'ST',  name:'Stroller',          emoji:'🛺', defaultImg:'https://i.ibb.co.com/fzwMy2XL/The-Edit-The-stroller-changing-the-game-banner-desktop.webp', priceHour:20000, priceOT30:10000, priceOT60:20000 },
-  { code:'SB',  name:'Stroller Paket 3J', emoji:'🛺', defaultImg:'https://i.ibb.co.com/fzwMy2XL/The-Edit-The-stroller-changing-the-game-banner-desktop.webp', priceHour:50000, priceOT30:10000, priceOT60:20000, isPackage:true, packageHours:3 },
-  { code:'SD',  name:'Scooter Dewasa',    emoji:'🛵', defaultImg:'https://i.ibb.co.com/rG55b6ts/wp8922917.jpg',                                                           priceHour:50000, priceOT30:25000, priceOT60:50000 },
-  { code:'SJ',  name:'Scooter Jumbo',     emoji:'🦽', defaultImg:'https://i.ibb.co.com/hxVgMw63/Pngtree-3d-render-of-a-black-5598024.jpg',                               priceHour:60000, priceOT30:30000, priceOT60:60000 },
-  { code:'SA',  name:'Scooter Anak',      emoji:'🛴', defaultImg:'https://i.ibb.co.com/qMZ9szQQ/adad.png',                                                               priceHour:35000, priceOT30:20000, priceOT60:35000 },
-];
-
-export const fmtRp = n => n ? 'Rp ' + Math.round(n).toLocaleString('id-ID') : 'Rp 0';
-export const generateShortId = (prefix = 's') => `${prefix}-${Math.random().toString(36).slice(2, 8)}`;
-export const fmtDur = s => {
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
-};
-
-export function safeSetItem(key, value) {
-  try {
-    localStorage.setItem(key, value);
-  } catch (e) {
-    if (e.name === 'QuotaExceededError' && key !== 'kw_txns') {
-      try {
-        const txns = JSON.parse(localStorage.getItem('kw_txns') || '[]');
-        const pruned = txns.slice(-200);
-        localStorage.setItem('kw_txns', JSON.stringify(pruned));
-      } catch (_) {}
-      localStorage.setItem(key, value);
-    } else {
-      throw e;
-    }
-  }
-}
-
-export function normalizeItems(val) {
-  if (!val) return [];
-  if (Array.isArray(val)) {
-    return val.map(it => {
-      if (!it) return null;
-      if (typeof it === 'string') {
-        const m = it.trim().match(/^(.+?)(?:[x\xD7](\d+))?$/i);
-        return m ? { code: m[1].trim(), qty: Number(m[2] || 1) } : { code: it.trim(), qty: 1 };
-      }
-      if (typeof it === 'object') {
-        return { code: String(it.code || 'ITEM'), qty: Number(it.qty || 1) };
-      }
-      return null;
-    }).filter(Boolean);
-  }
-  if (typeof val === 'string') {
-    try {
-      const parsed = JSON.parse(val);
-      if (Array.isArray(parsed)) return normalizeItems(parsed);
-    } catch(e) {}
-    return val.split(',').map(part => {
-      const p = part.trim();
-      const m = p.match(/^(.+?)(?:[x\xD7](\d+))?$/i);
-      return m ? { code: m[1].trim(), qty: Number(m[2] || 1) } : { code: p, qty: 1 };
-    }).filter(Boolean);
-  }
-  return [];
-}
-
-export function normalizeSession(s) {
-  if (!s || typeof s !== 'object') return null;
-  const startMs = Number(s.startTime);
-  const validStart = (!isNaN(startMs) && startMs > 1577836800000) ? startMs : Date.now();
-  return {
-    ...s,
-    id: String(s.id || generateShortId('s')),
-    nama: String(s.nama || 'Penyewa'),
-    items: normalizeItems(s.items),
-    startTime: validStart,
-    tanggal: String(s.tanggal || getShiftDate(validStart)),
-    queueNo: Number(s.queueNo || 0),
-    payAwal: String(s.payAwal || 'cash').toLowerCase(),
-    _synced: s._synced !== undefined ? Boolean(s._synced) : true
-  };
-}
-
-export function normalizeTxn(t) {
-  if (!t || typeof t !== 'object') return null;
-  const startMs = Number(t.startTime);
-  const validStart = (!isNaN(startMs) && startMs > 1577836800000) ? startMs : Date.now();
-  const endMs = Number(t.endTime);
-  const validEnd = (!isNaN(endMs) && endMs > 1577836800000) ? endMs : validStart;
-  return {
-    ...t,
-    id: String(t.id || generateShortId('t')),
-    no: Number(t.no || Date.now()),
-    queueNo: Number(t.queueNo || 0),
-    nama: String(t.nama || 'Penyewa'),
-    tanggal: String(t.tanggal || getShiftDate(validStart)),
-    startTime: validStart,
-    endTime: validEnd,
-    items: typeof t.items === 'string' ? t.items : normalizeItems(t.items),
-    ot: String(t.ot || '-'),
-    otDur: String(t.otDur || '-'),
-    totalBase: Number(t.totalBase || 0),
-    totalOT: Number(t.totalOT || 0),
-    totalTol: Number(t.totalTol || 0),
-    grandTotal: Number(t.grandTotal || 0),
-    totalAll: Number(t.totalAll || 0),
-    payAwal: String(t.payAwal || 'cash').toLowerCase(),
-    cash: Number(t.cash || 0),
-    qris: Number(t.qris || 0),
-    shift: String(t.shift || '-'),
-    _synced: t._synced !== undefined ? Boolean(t._synced) : true
-  };
-}
+// Re-export agar komponen yang masih import dari '../App' tetap berfungsi
+export { ITEMS, fmtRp, fmtDur, generateShortId, safeSetItem, normalizeItems, normalizeSession, normalizeTxn };
 
 // No localStorage data caching — SQLite server is source of truth
 
@@ -131,6 +29,7 @@ function App() {
   const [activeSessions, setActiveSessions] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [users, setUsers] = useState([]);
+  const [deletionLogs, setDeletionLogs] = useState([]);
   const [shiftQueueNo, setShiftQueueNo] = useState(0);
   const [currentShiftUser, setCurrentShiftUser] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState(null);
@@ -405,7 +304,7 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to start session:', e);
-      alert('Gagal memulai sesi sewa. Periksa koneksi ke server.');
+      swalError('Gagal Memulai Sesi', 'Periksa koneksi ke server.');
     }
   };
 
@@ -420,11 +319,28 @@ function App() {
 
   const handleDeleteTxn = async (txn) => {
     const txnObj = typeof txn === 'object' ? txn : { id: txn };
-    if (window.confirm('Hapus bill / riwayat transaksi ini?')) {
+    const ok = await swalConfirm(
+      'Hapus Riwayat Transaksi?',
+      `Bill atas nama "${txnObj.nama || '-'}" akan dihapus secara permanen.`,
+      'Ya, Hapus!'
+    );
+    if (ok) {
+      // Catat log penghapusan sebelum dihapus
+      const logEntry = {
+        txnId: txnObj.id || null,
+        txnNo: txnObj.no || null,
+        txnNama: txnObj.nama || '',
+        txnTanggal: txnObj.tanggal || '',
+        txnTotalAll: txnObj.totalAll || 0,
+        deletedAt: Date.now(),
+        deletedBy: currentShiftUser || 'admin'
+      };
       // Optimistic UI update
       setTransactions(prev => prev.filter(t => t.id !== txnObj.id && String(t.no) !== String(txnObj.no)));
+      setDeletionLogs(prev => [{ ...logEntry, id: Date.now() }, ...prev]);
       try {
         await deleteTxn({ id: txnObj.id, no: txnObj.no });
+        await addDeletionLog(logEntry);
       } catch (e) {
         console.error('Failed to delete transaction on server:', e);
         // Rollback on error
@@ -435,10 +351,16 @@ function App() {
 
   const handleClearHistory = async () => {
     if (transactions.length === 0) {
-      alert('Tidak ada riwayat transaksi untuk dibersihkan.');
+      swalWarning('Riwayat Kosong', 'Tidak ada riwayat transaksi untuk dibersihkan.');
       return;
     }
-    if (window.confirm('APAKAH ANDA YAKIN INGIN MEMBERSIHKAN SELURUH RIWAYAT TRANSAKSI? Data riwayat akan dihapus secara permanen.')) {
+    const ok = await swalConfirm(
+      'Bersihkan Semua Riwayat?',
+      'Seluruh data riwayat transaksi akan dihapus secara permanen dan tidak bisa dikembalikan!',
+      'Ya, Bersihkan!',
+      'warning'
+    );
+    if (ok) {
       setTransactions([]);
       try {
         await clearAllTxns();
@@ -466,10 +388,10 @@ function App() {
       await editSession(updatedSession);
       setActiveSessions(prev => prev.map(s => s.id === updatedSession.id ? normalizeSession(updatedSession) : s));
       setActiveEditSession(null);
-      alert('Sesi diperbarui!');
+      swalSuccess('Sesi Diperbarui!');
     } catch (e) {
-      console.error('Failed to edit session:', e);
-      alert('Gagal memperbarui sesi. Periksa koneksi ke server.');
+      console.error('Failed to save edited session:', e);
+      swalError('Gagal Memperbarui', 'Periksa koneksi ke server.');
     }
   };
 
@@ -525,7 +447,7 @@ function App() {
       }
     } catch (e) {
       console.error('Failed to finalize payment:', e);
-      alert('Gagal memproses pembayaran. Periksa koneksi ke server.');
+      swalError('Gagal Proses Pembayaran', 'Periksa koneksi ke server.');
     } finally {
       setActivePaymentData(null);
     }
@@ -565,10 +487,10 @@ function App() {
               setCurrentUserRole('admin');
               localStorage.setItem('kw_userRole', 'admin');
             } else {
-              alert('Password salah!');
+              swalError('Password Salah', 'Password admin tidak sesuai.');
             }
           } catch {
-            alert('Gagal terhubung ke server.');
+            swalError('Koneksi Gagal', 'Tidak dapat terhubung ke server.');
           }
         }}
       />
@@ -681,6 +603,15 @@ function App() {
             }}
             onClearHistory={currentUserRole === 'admin' ? handleClearHistory : null}
             currentUserRole={currentUserRole}
+          />
+        )}
+        {activeTab === 'log-hapus' && currentUserRole === 'admin' && (
+          <DeletionLogTab
+            deletionLogs={deletionLogs}
+            onLoadDeletionLogs={async () => {
+              const res = await getDeletionLogs();
+              if (res && res.logs) setDeletionLogs(res.logs);
+            }}
           />
         )}
         {activeTab === 'pengaturan' && currentUserRole === 'cashier' && (

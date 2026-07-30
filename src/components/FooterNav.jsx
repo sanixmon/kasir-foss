@@ -25,6 +25,18 @@ function FooterNav({ activeTab, onTabChange, activeCount, currentUserRole }) {
       </button>
 
       {currentUserRole !== 'cashier' && (
+        <button
+          className={`fnav-btn ${activeTab === 'log-hapus' ? 'active' : ''}`}
+          onClick={() => onTabChange('log-hapus')}
+        >
+          <div className="fnav-ico-wrap">
+            <i className="bi bi-shield-exclamation" style={{ color: activeTab === 'log-hapus' ? 'var(--red)' : undefined }}></i>
+          </div>
+          <span className="fnav-label">Log Hapus</span>
+        </button>
+      )}
+
+      {currentUserRole !== 'cashier' && (
         <button 
           className={`fnav-btn ${activeTab === 'pengaturan' ? 'active' : ''}`} 
           onClick={() => onTabChange('pengaturan')}
