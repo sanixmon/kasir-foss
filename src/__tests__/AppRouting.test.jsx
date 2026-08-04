@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import App from '../App';
 
@@ -17,11 +17,13 @@ describe('App Routing based on Role', () => {
     localStorage.clear();
   });
 
-  it('shows RoleSelection initially, clicking Kasir shows LoginPage', () => {
+  it('shows RoleSelection initially, clicking Kasir shows LoginPage', async () => {
     render(<App />);
     expect(screen.getByText(/Portal Kasir/i)).toBeDefined();
-    
-    fireEvent.click(screen.getByText(/Portal Kasir/i));
+
+    await act(async () => {
+      fireEvent.click(screen.getByText(/Portal Kasir/i));
+    });
     // LoginPage should appear (it has a text "Mulai Shift")
     expect(screen.getByText(/Mulai Shift/i)).toBeDefined();
   });

@@ -26,9 +26,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/__tests__/setup.js'],
+    exclude: ['tests/**', 'node_modules/**', 'dist/**'],
     coverage: {
       reporter: ['text', 'html'],
-      exclude: ['node_modules/', 'dist/'],
+      exclude: ['node_modules/', 'dist/', 'tests/'],
     },
   },
 })
