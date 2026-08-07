@@ -1,4 +1,4 @@
-# Design Spec: Google Sheets + Apps Script Migration for kasir-trial
+# Design Spec: Google Sheets + Apps Script Migration for kasir-db
 
 **Date:** 2026-07-26  
 **Status:** Approved  
@@ -8,7 +8,7 @@
 
 ## 1. Overview & Goals
 
-The `kasir-trial` POS application currently uses Supabase (PostgreSQL + Realtime) paired with a complex `localStorage` sync engine (`src/lib/sync.js`). This design replaces Supabase and the offline-first sync engine with:
+The `kasir-db` POS application currently uses Supabase (PostgreSQL + Realtime) paired with a complex `localStorage` sync engine (`src/lib/sync.js`). This design replaces Supabase and the offline-first sync engine with:
 1. **Google Sheets** as the centralized flat-file database.
 2. **Google Apps Script Web App (`Code.gs`)** acting as the serverless REST-like API gateway handling atomic locks and sheet read/writes.
 3. **HTTP Polling** (every 3–5 seconds) from the React client to synchronize active sessions and transactions across cashier terminals.

@@ -30,7 +30,7 @@
 - Produces: CSS imported globally, CDNs loaded in HTML, basic React mount verified.
 
 - [ ] **Step 1: Update index.html**
-  Replace `/root/dev/kasir-trial/index.html` with basic React mount structure and keep all original Google fonts, Bootstrap CDNs, sheetJS, and qrcodejs scripts, and add the SW unregistration logic.
+  Replace `/root/dev/kasir-db/index.html` with basic React mount structure and keep all original Google fonts, Bootstrap CDNs, sheetJS, and qrcodejs scripts, and add the SW unregistration logic.
   
   ```html
   <!DOCTYPE html>
@@ -64,7 +64,7 @@
   ```
 
 - [ ] **Step 2: Copy Vanilla CSS**
-  Copy `/root/dev/kasir-trial/backup-vanilla/style.css` to `/root/dev/kasir-trial/src/index.css`.
+  Copy `/root/dev/kasir-db/backup-vanilla/style.css` to `/root/dev/kasir-db/src/index.css`.
   
   ```bash
   cp backup-vanilla/style.css src/index.css

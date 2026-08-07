@@ -31,10 +31,44 @@ function App() {
   const [users, setUsers] = useState([]);
   const [deletionLogs, setDeletionLogs] = useState([]);
   const [shiftQueueNo, setShiftQueueNo] = useState(0);
-  const [currentShiftUser, setCurrentShiftUser] = useState(null);
-  const [currentUserRole, setCurrentUserRole] = useState(null);
+  const [currentShiftUser, setCurrentShiftUser] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem('kw_currentUser');
+      if (!savedUser) return null;
+      const shiftDate = localStorage.getItem('kw_shiftDate');
+      const currentShiftDate = getShiftDate();
+      if (shiftDate && checkShiftExpiration(shiftDate, currentShiftDate)) {
+        return null;
+      }
+      return savedUser;
+    } catch {
+      return null;
+    }
+  });
+
+  const [currentUserRole, setCurrentUserRole] = useState(() => {
+    try {
+      const savedUser = localStorage.getItem('kw_currentUser');
+      const savedRole = localStorage.getItem('kw_userRole');
+      const shiftDate = localStorage.getItem('kw_shiftDate');
+      const currentShiftDate = getShiftDate();
+      if (savedRole === 'cashier' && savedUser && shiftDate && checkShiftExpiration(shiftDate, currentShiftDate)) {
+        return null;
+      }
+      if (savedRole === 'cashier' && !savedUser) {
+        return null;
+      }
+      return savedRole || null;
+    } catch {
+      return null;
+    }
+  });
+
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [theme, setTheme] = useState('dark');
+
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('kw_theme') || 'dark';
+  });
   const [apiConnected, setApiConnected] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isTrackingMode, setIsTrackingMode] = useState(false);
@@ -126,11 +160,6 @@ function App() {
     setTheme(savedTheme);
     document.documentElement.setAttribute('data-theme', savedTheme);
 
-    const savedUser = localStorage.getItem('kw_currentUser');
-    if (savedUser) setCurrentShiftUser(savedUser);
-    const savedRole = localStorage.getItem('kw_userRole');
-    if (savedRole) setCurrentUserRole(savedRole);
-
     const checkHash = () => {
       const hash = window.location.hash;
       if (hash.startsWith('#track/')) {
@@ -144,23 +173,6 @@ function App() {
     };
     checkHash();
     window.addEventListener('hashchange', checkHash);
-
-    const savedUserForShift = localStorage.getItem('kw_currentUser');
-    if (savedUserForShift) {
-      let shiftDate = localStorage.getItem('kw_shiftDate');
-      const currentShiftDate = getShiftDate();
-      if (!shiftDate) {
-        shiftDate = currentShiftDate;
-        localStorage.setItem('kw_shiftDate', shiftDate);
-      }
-      if (checkShiftExpiration(shiftDate, currentShiftDate)) {
-        localStorage.removeItem('kw_currentUser');
-        localStorage.removeItem('kw_shiftDate');
-        localStorage.removeItem('kw_shiftQNo');
-        setShiftQueueNo(0);
-        setCurrentShiftUser(null);
-      }
-    }
 
     loadData();
     const interval = setInterval(loadData, 5000);
@@ -297,6 +309,8 @@ function App() {
       const res = await addSession(sessionData);
       if (res && res.session) {
         const newSess = normalizeSession(res.session);
+        setShiftQueueNo(Number(newSess.queueNo) || 0);
+        localStorage.setItem('kw_shiftQNo', String(newSess.queueNo || 0));
         setActiveSessions(prev => [...prev.filter(s => s.id !== newSess.id), newSess]);
         if (printMulai) handlePrintMulai(newSess);
       } else {
@@ -412,6 +426,7 @@ function App() {
 
     const claimPayload = {
       sessionId: session.id,
+      remainingItems,
       queueNo: session.queueNo || 0,
       nama: session.nama,
       tanggal: session.tanggal || todayStr(),
@@ -525,7 +540,7 @@ function App() {
                   style={{ cursor: 'pointer' }}
                 >
                   <i className="bi bi-person-fill" style={{ color: 'var(--green)', fontSize: '1rem', marginRight: '4px' }}></i>
-                  <span>{currentShiftUser}</span>
+                  <span>{currentShiftUser || (currentUserRole === 'admin' ? 'Admin' : 'Kasir')}</span>
                 </div>
                 <ul className="dropdown-menu dropdown-menu-end dropdown-menu-dark shadow border-0" style={{ backgroundColor: 'var(--card-bg)', minWidth: '180px' }}>
                   <li>

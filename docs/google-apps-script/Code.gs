@@ -409,12 +409,18 @@ function claimSession(payload) {
     var sessSheet = getOrCreateSheet(ss, SHEET_SESSIONS,     ['id','nama','items','start_time','tanggal','queue_no','pay_awal']);
     var txnSheet  = getOrCreateSheet(ss, SHEET_TRANSACTIONS, ['id','no','queue_no','nama','tanggal','start_time','end_time','items','ot','ot_dur','total_base','total_ot','total_tol','grand_total','total_all','pay_awal','cash','qris','shift']);
 
-    // Remove active session
+    // Remove or update active session
     if (payload.sessionId) {
       var sessData = sessSheet.getDataRange().getValues();
+      var hasRemaining = payload.remainingItems && Array.isArray(payload.remainingItems) && payload.remainingItems.length > 0;
       for (var i = 1; i < sessData.length; i++) {
         if (String(sessData[i][0]) === String(payload.sessionId)) {
-          sessSheet.deleteRow(i + 1); break;
+          if (hasRemaining) {
+            sessSheet.getRange(i + 1, 3).setValue(JSON.stringify(payload.remainingItems));
+          } else {
+            sessSheet.deleteRow(i + 1);
+          }
+          break;
         }
       }
     }

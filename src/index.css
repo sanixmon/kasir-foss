@@ -14,7 +14,7 @@
 }
 *,*::before,*::after{box-sizing:border-box}
 html{overflow-x:hidden;max-width:100vw}
-body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:16px;min-height:100vh;padding-bottom:76px;transition:background 0.25s cubic-bezier(0.16,1,0.3,1),color 0.25s cubic-bezier(0.16,1,0.3,1);letter-spacing:-0.01em;-webkit-font-smoothing:antialiased;overflow-x:hidden;max-width:100vw}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);font-size:16px;min-height:100vh;padding-bottom:76px;letter-spacing:-0.01em;-webkit-font-smoothing:antialiased;overflow-x:hidden;max-width:100vw}
 /* LOGIN */
 #loginPage{position:fixed;inset:0;z-index:9999;background:var(--bg);display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px;backdrop-filter:blur(8px)}
 .login-card{background:var(--bg2);border:1.5px solid var(--border);border-radius:24px;padding:44px 38px;width:100%;max-width:420px;box-shadow:var(--surface-glow);text-align:center;transition:all 0.3s ease}
@@ -102,6 +102,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 .aktif-card{background:var(--bg);border:1.5px solid var(--border);border-radius:14px;padding:14px 15px;transition:all .25s cubic-bezier(0.16,1,0.3,1);display:flex;flex-direction:column;gap:0;min-width:0;max-width:100%;overflow:hidden;box-shadow:0 4px 14px rgba(0,0,0,0.25)}
 .aktif-card:hover{border-color:var(--cyan);box-shadow:0 8px 24px color-mix(in srgb, var(--cyan) 25%, transparent);transform:translateY(-2px)}
 .aktif-name{font-weight:800;font-size:.98rem;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)}
+.aktif-queue-badge{display:inline-flex;align-items:center;justify-content:center;min-width:24px;background:linear-gradient(135deg,var(--yellow),#f59e0b);color:#000;font-size:.72rem;font-weight:900;padding:2px 7px;border-radius:99px;vertical-align:middle;box-shadow:0 2px 6px color-mix(in srgb, var(--yellow) 45%, transparent)}
 .item-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
 .itag{background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:3px 9px;font-size:.74rem;font-weight:800;color:var(--yellow);white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,0.2)}
 .aktif-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px;background:var(--bg2);padding:6px 10px;border-radius:8px;border:1px solid var(--border)}
@@ -367,23 +368,57 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
   .aktif-footer{gap:5px}
   .btn-selesai{font-size:.78rem;padding:8px 8px}
   .btn-edit-aktif,.btn-qr-aktif{width:32px;height:32px;font-size:.85rem}
-  /* History table → card stack on mobile */
-  .ctable thead{display:none}
-  .ctable tbody tr{display:block;background:var(--bg);border:1.5px solid var(--border);border-radius:12px;margin-bottom:10px;padding:10px 12px;overflow:hidden}
-  .ctable tbody tr:hover td{background:none}
-  .ctable td{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:.82rem}
-  .ctable td:last-child{border-bottom:none;padding-top:10px;justify-content:flex-end;gap:8px}
-  .ctable td::before{content:attr(data-label);font-size:.7rem;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:.4px;flex-shrink:0;margin-right:8px}
-  /* History panel-head filters wrap cleanly */
-  #tab-riwayat .panel-head{flex-direction:column;align-items:flex-start}
-  #tab-riwayat .panel-head .ms-auto{margin-left:0!important;width:100%}
-  #tab-riwayat .panel-head .ms-auto .d-flex{flex-wrap:wrap;gap:6px!important}
-  .ctable td[data-empty]{display:none}
   .cfield-sm{font-size:.82rem;padding:7px 10px}
   /* Header shrink */
   .clock-time{font-size:.95rem!important}
   .clock-date{display:none}
   .brand-sub{display:none}
+}
+
+@media(max-width:1024px){
+  /* History table → card stack grid on tablet/mobile */
+  .ctable thead{display:none}
+  .ctable tbody {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+    gap: 14px;
+  }
+  .ctable tbody tr {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    margin-bottom: 0;
+    padding: 14px 16px;
+    overflow: hidden;
+  }
+  .ctable tbody tr:hover td{background:none}
+  .ctable td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    font-size: .88rem;
+    width: 100%;
+  }
+  .ctable td:last-child{border-bottom:none;padding-top:14px;justify-content:flex-start;gap:12px}
+  .ctable td::before{
+    content:attr(data-label);
+    font-size:.74rem;
+    color:var(--text2);
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.4px;
+    flex-shrink:0;
+    margin-right:12px;
+  }
+  /* History panel-head filters wrap cleanly */
+  #tab-riwayat .panel-head{flex-direction:column;align-items:flex-start}
+  #tab-riwayat .panel-head .ms-auto{margin-left:0!important;width:100%;margin-top:12px}
+  #tab-riwayat .panel-head .ms-auto .d-flex{flex-wrap:wrap;gap:8px!important}
+  .ctable td[data-empty]{display:none}
 }
 /* LIGHT MODE OVERRIDES */
 [data-theme="light"] .cmodal{background:#fff;color:#1c2128}

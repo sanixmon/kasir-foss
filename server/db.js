@@ -161,14 +161,36 @@ export function fetchAllData() {
   };
 }
 
+function shiftDateStr(ts) {
+  const d = ts ? new Date(ts) : new Date();
+  d.setHours(d.getHours() - 6);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 export function addSession(payload) {
   const id = payload.id || `s-${Math.random().toString(36).slice(2, 8)}`;
   const nama = payload.nama || '';
   const items = JSON.stringify(payload.items || []);
   const startTime = payload.startTime || Date.now();
-  const tanggal = payload.tanggal || new Date().toISOString().split('T')[0];
+  const tanggal = payload.tanggal || shiftDateStr(startTime);
   const payAwal = payload.payAwal || 'cash';
-  const queueNo = payload.queueNo || 0;
+
+  // Queue numbering: preserve the number on upsert (idempotent sync),
+  // otherwise auto-increment per shift based on active + claimed sessions.
+  let queueNo = Number(payload.queueNo) || 0;
+  const existing = db.prepare('SELECT queue_no FROM active_sessions WHERE id = ?').get(id);
+  if (existing) {
+    queueNo = Number(existing.queue_no) || 0;
+  } else if (queueNo <= 0) {
+    const q = db.prepare(`
+      SELECT COALESCE(MAX(q), 0) + 1 AS nextQ FROM (
+        SELECT queue_no AS q FROM active_sessions WHERE tanggal = ?
+        UNION ALL
+        SELECT queue_no AS q FROM transactions WHERE tanggal = ?
+      )
+    `).get(tanggal, tanggal);
+    queueNo = Number(q.nextQ) || 1;
+  }
 
   const stmt = db.prepare(`
     INSERT INTO active_sessions (id, queue_no, nama, items, start_time, tanggal, pay_awal)
@@ -246,7 +268,8 @@ export function claimSession(payload) {
     shift = '-'
   } = payload;
 
-  const txnId = sessionId ? `t-${sessionId.replace(/^s-/, '')}` : `t-${Math.random().toString(36).slice(2, 8)}`;
+  const hasRemaining = Array.isArray(payload.remainingItems) && payload.remainingItems.length > 0;
+  const txnId = (sessionId && !hasRemaining) ? `t-${sessionId.replace(/^s-/, '')}` : `t-${Math.random().toString(36).slice(2, 8)}`;
 
   if (sessionId) {
     const existing = db.prepare('SELECT id FROM active_sessions WHERE id = ?').get(sessionId);
@@ -258,7 +281,11 @@ export function claimSession(payload) {
   db.exec('BEGIN IMMEDIATE;');
   try {
     if (sessionId) {
-      db.prepare('DELETE FROM active_sessions WHERE id = ?').run(sessionId);
+      if (hasRemaining) {
+        db.prepare('UPDATE active_sessions SET items = ? WHERE id = ?').run(JSON.stringify(payload.remainingItems), sessionId);
+      } else {
+        db.prepare('DELETE FROM active_sessions WHERE id = ?').run(sessionId);
+      }
     }
 
     const maxNoRow = db.prepare('SELECT COALESCE(MAX(no), 0) + 1 AS nextNo FROM transactions').get();

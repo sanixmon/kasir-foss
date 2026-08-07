@@ -40,6 +40,9 @@ function LiveSessionTimer({ session, onSelesaiSewa, onShowQR, onPrintSesi, onEdi
     <div className="aktif-card">
       <div className="d-flex align-items-center justify-content-between mb-1 gap-2" style={{ minWidth: 0 }}>
         <div className="aktif-name" style={{ marginBottom: 0 }}>
+          {Number(session.queueNo) > 0 && (
+            <span className="aktif-queue-badge me-1" title="Nomor Antrian">#{session.queueNo}</span>
+          )}
           <i className="bi bi-person-fill me-1 clr-cyan"></i>{session.nama || 'Penyewa'}
           {isZombie && (
             <span title="Sesi sudah lebih dari 8 jam!" style={{

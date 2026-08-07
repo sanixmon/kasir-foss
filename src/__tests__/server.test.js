@@ -56,6 +56,35 @@ describe('SQLite Backend Server Logic (TDD)', () => {
     expect(fetched.sessions[0]).toEqual(sessionData);
   });
 
+  it('add_session auto-assigns sequential queue numbers per shift when queueNo omitted', () => {
+    const s1 = handleAction('add_session', { id: 's-q1', nama: 'Satu', tanggal: '2026-08-07' });
+    expect(s1.success).toBe(true);
+    expect(s1.session.queueNo).toBe(1);
+
+    const s2 = handleAction('add_session', { id: 's-q2', nama: 'Dua', tanggal: '2026-08-07' });
+    expect(s2.session.queueNo).toBe(2);
+
+    // Shift baru memulai nomor dari 1 kembali
+    const s3 = handleAction('add_session', { id: 's-q3', nama: 'Tiga', tanggal: '2026-08-08' });
+    expect(s3.session.queueNo).toBe(1);
+
+    // Upsert id yang sama tidak menambah ulang nomor antrian
+    const s1b = handleAction('add_session', { id: 's-q1', nama: 'Satu-edit', tanggal: '2026-08-07' });
+    expect(s1b.session.queueNo).toBe(1);
+
+    // Sesi aktif tetap dihitung sebagai nomor terpakai shift tsb
+    const s4 = handleAction('add_session', { id: 's-q4', nama: 'Empat', tanggal: '2026-08-08' });
+    expect(s4.session.queueNo).toBe(2);
+
+    // Transaksi yang sudah diklaim juga menghabiskan nomor untuk shift tsb
+    handleAction('claim_session', { sessionId: 's-q4', queueNo: 2, nama: 'Empat', tanggal: '2026-08-08', remainingItems: [] });
+    const s5 = handleAction('add_session', { id: 's-q5', nama: 'Lima', tanggal: '2026-08-08' });
+    expect(s5.session.queueNo).toBe(3);
+
+    const s6 = handleAction('add_session', { id: 's-q6', nama: 'Enam', tanggal: '2026-08-07' });
+    expect(s6.session.queueNo).toBe(3);
+  });
+
   it('edit_session updates active session details', () => {
     const sessionData = {
       id: 's-test01',
@@ -128,6 +157,68 @@ describe('SQLite Backend Server Logic (TDD)', () => {
     const fetched = handleAction('fetch_data');
     expect(fetched.transactions).toHaveLength(1);
     expect(fetched.transactions[0].no).toBe(1);
+  });
+
+  it('claim_session updates active session items on partial return instead of deleting session', () => {
+    handleAction('add_session', {
+      id: 's-partial01',
+      queueNo: 2,
+      nama: 'Partial Return Customer',
+      items: [{ code: 'SCT', qty: 4 }],
+      startTime: 1700000000000,
+      tanggal: '2026-07-26',
+      payAwal: 'cash'
+    });
+
+    const claimPartialPayload = {
+      sessionId: 's-partial01',
+      queueNo: 2,
+      nama: 'Partial Return Customer',
+      tanggal: '2026-07-26',
+      startTime: 1700000000000,
+      endTime: 1700003600000,
+      items: 'SCT×2',
+      remainingItems: [{ code: 'SCT', qty: 2 }],
+      totalBase: 70000,
+      grandTotal: 70000,
+      totalAll: 70000,
+      payAwal: 'cash'
+    };
+
+    const res = handleAction('claim_session', claimPartialPayload);
+    expect(res.success).toBe(true);
+
+    const fetched = handleAction('fetch_data');
+    expect(fetched.transactions).toHaveLength(1);
+    expect(fetched.transactions[0].items).toBe('SCT×2');
+
+    // Sesi aktif HARUS MASIH ADA dengan sisa 2 skuter
+    expect(fetched.sessions).toHaveLength(1);
+    expect(fetched.sessions[0].id).toBe('s-partial01');
+    expect(fetched.sessions[0].items).toEqual([{ code: 'SCT', qty: 2 }]);
+
+    // Saat sisa 2 skuter dikembalikan, sesi aktif baru terhapus
+    const claimRemainingPayload = {
+      sessionId: 's-partial01',
+      queueNo: 2,
+      nama: 'Partial Return Customer',
+      tanggal: '2026-07-26',
+      startTime: 1700000000000,
+      endTime: 1700007200000,
+      items: 'SCT×2',
+      remainingItems: [],
+      totalBase: 70000,
+      grandTotal: 70000,
+      totalAll: 70000,
+      payAwal: 'cash'
+    };
+
+    const resFinal = handleAction('claim_session', claimRemainingPayload);
+    expect(resFinal.success).toBe(true);
+
+    const fetchedFinal = handleAction('fetch_data');
+    expect(fetchedFinal.sessions).toHaveLength(0);
+    expect(fetchedFinal.transactions).toHaveLength(2);
   });
 
   it('save_setting upserts system setting key-values', () => {

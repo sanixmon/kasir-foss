@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Migrate `kasir-trial` POS application from Supabase database & offline localStorage sync to a Google Sheets database powered by a Google Apps Script Web App backend with 5s polling.
+**Goal:** Migrate `kasir-db` POS application from Supabase database & offline localStorage sync to a Google Sheets database powered by a Google Apps Script Web App backend with 5s polling.
 
 **Architecture:** A standalone Google Apps Script (`Code.gs`) handles data requests with `LockService` for concurrency safety and `CacheService` for API efficiency. React client uses `src/api.js` to send HTTP POST requests and polls server data every 5 seconds.
 

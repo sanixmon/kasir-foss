@@ -12,7 +12,6 @@ function CalculateRentalModal({ session, onClose, onProceedPayment, currentUserR
   const [elapsed, setElapsed] = useState(() => Math.floor((Date.now() - safeStart) / 1000));
   const [elapsedMin, setElapsedMin] = useState(() => Math.floor((Date.now() - safeStart) / 1000) / 60);
   const [itemsCalc, setItemsCalc] = useState([]);
-  const [manualAdj, setManualAdj] = useState(0);
 
   useEffect(() => {
     const safeStart = (session.startTime && session.startTime > 1577836800000)
@@ -41,53 +40,11 @@ function CalculateRentalModal({ session, onClose, onProceedPayment, currentUserR
         baseCost: (def.priceHour || 0) * (it.qty || 1),
         otFullCount: otFull,
         otHalfCount: otHalf,
-        otCost: otCost,
-        tolOn: false,
-        bakFull: otFull,
-        bakHalf: otHalf,
-        bakCost: otCost
+        otCost: otCost
       };
     }).filter(Boolean);
     setItemsCalc(initial);
   }, [session]);
-
-  const handleTolToggle = (idx, checked) => {
-    setItemsCalc(prev => prev.map((it, i) => {
-      if (i !== idx) return it;
-      if (checked) {
-        return {
-          ...it,
-          tolOn: true,
-          bakFull: it.otFullCount,
-          bakHalf: it.otHalfCount,
-          bakCost: it.otCost,
-          otFullCount: 0,
-          otHalfCount: 0,
-          otCost: 0
-        };
-      } else {
-        return {
-          ...it,
-          tolOn: false,
-          otFullCount: it.bakFull,
-          otHalfCount: it.bakHalf,
-          otCost: it.bakCost
-        };
-      }
-    }));
-  };
-
-  const adjustOTQty = (idx, field, delta) => {
-    setItemsCalc(prev => prev.map((it, i) => {
-      if (i !== idx) return it;
-      const updated = { ...it };
-      updated[field] = Math.max(0, updated[field] + delta);
-      const price60 = updated.def?.priceOT60 || updated.def?.priceOT50 || updated.def?.priceHour || 0;
-      const price30 = updated.def?.priceOT30 || 0;
-      updated.otCost = (updated.otFullCount * price60 + updated.otHalfCount * price30) * updated.returnQty;
-      return updated;
-    }));
-  };
 
   const handleReturnQtyChange = (idx, delta) => {
     setItemsCalc(prev => prev.map((it, i) => {
@@ -101,15 +58,14 @@ function CalculateRentalModal({ session, onClose, onProceedPayment, currentUserR
         ...it,
         returnQty: newReturnQty,
         baseCost,
-        otCost,
-        bakCost: (it.bakFull * price60 + it.bakHalf * price30) * newReturnQty
+        otCost
       };
     }));
   };
 
   const baseSum = itemsCalc.reduce((sum, it) => sum + it.baseCost, 0);
-  const otSum = itemsCalc.reduce((sum, it) => sum + (it.tolOn ? 0 : it.otCost), 0);
-  const grandOT = Math.max(0, otSum + manualAdj);
+  const otSum = itemsCalc.reduce((sum, it) => sum + it.otCost, 0);
+  const grandOT = Math.max(0, otSum);
 
   const isOT = itemsCalc.some(it => it.returnQty > 0 && Math.floor(elapsedMin - it.limitMin) >= 11);
   const maxOver = Math.max(...itemsCalc.map(it => {
@@ -126,12 +82,12 @@ function CalculateRentalModal({ session, onClose, onProceedPayment, currentUserR
     if (isSubmitting || !canProceed) return;
     setIsSubmitting(true);
     const otStr = itemsCalc
-      .filter(it => !it.tolOn && it.returnQty > 0 && (it.otFullCount > 0 || it.otHalfCount > 0))
+      .filter(it => it.returnQty > 0 && (it.otFullCount > 0 || it.otHalfCount > 0))
       .map(it => `${it.code}(${it.otFullCount > 0 ? it.otFullCount + '×1j' : ''}${it.otHalfCount > 0 ? (it.otFullCount > 0 ? '+' : '') + it.otHalfCount + '×½j' : ''})`)
       .join(', ');
     
     const otDurStr = itemsCalc
-      .filter(it => !it.tolOn && it.returnQty > 0 && (it.otFullCount > 0 || it.otHalfCount > 0))
+      .filter(it => it.returnQty > 0 && (it.otFullCount > 0 || it.otHalfCount > 0))
       .map(it => `${it.code}:${it.otFullCount * 60 + it.otHalfCount * 30}m`)
       .join(', ');
 
@@ -140,7 +96,7 @@ function CalculateRentalModal({ session, onClose, onProceedPayment, currentUserR
       itemsCalc,
       base: baseSum,
       ot: otSum,
-      tol: manualAdj !== 0 ? -manualAdj : 0,
+      tol: 0,
       grand: grandOT,
       otStr: otStr || '-',
       otDurStr: otDurStr || '-',
@@ -202,7 +158,7 @@ function CalculateRentalModal({ session, onClose, onProceedPayment, currentUserR
                   else overStatus = `Over ${Math.floor(overMin)}m`;
 
                   return (
-                    <div className={`breakdown-item ${it.tolOn ? 'item-tolerated' : ''} ${!isReturned ? 'opacity-75' : ''}`} key={it.code}>
+                    <div className={`breakdown-item ${!isReturned ? 'opacity-75' : ''}`} key={it.code}>
                       <div className="d-flex justify-content-between align-items-start gap-2">
                         <div className="flex-fill">
                           <div className="bi-name">{it.code} - {it.def.name} ×{it.qty}</div>
@@ -221,36 +177,14 @@ function CalculateRentalModal({ session, onClose, onProceedPayment, currentUserR
                           {!isReturned ? (
                             <span className="badge bg-secondary mt-1" style={{ fontSize: '0.65rem' }}>TETAP DISEWA (Belum Dikembalikan)</span>
                           ) : (
-                            <>
-                              <div className={`ot-auto-detail ${it.tolOn ? 'ot-detail-striked' : ''}`}>
-                                {otLabel.length > 0 ? otLabel.join(' + ') : 'Tidak ada overtime'}
-                              </div>
-                              {isAdmin && !it.tolOn && overMin > 0 && (
-                                <div className="ot-manual-row mt-2">
-                                  <span className="ot-manual-lbl">1 Jam: </span>
-                                  <button className="ot-count-btn" onClick={() => adjustOTQty(idx, 'otFullCount', -1)}>−</button>
-                                  <span className="mx-2">{it.otFullCount}</span>
-                                  <button className="ot-count-btn" onClick={() => adjustOTQty(idx, 'otFullCount', 1)}>+</button>
-                                  <span className="ot-manual-lbl ms-3">½ Jam: </span>
-                                  <button className="ot-count-btn" onClick={() => adjustOTQty(idx, 'otHalfCount', -1)}>−</button>
-                                  <span className="mx-2">{it.otHalfCount}</span>
-                                  <button className="ot-count-btn" onClick={() => adjustOTQty(idx, 'otHalfCount', 1)}>+</button>
-                                </div>
-                              )}
-                              {isAdmin && (
-                                <label className="tol-toggle-label mt-2">
-                                  <input type="checkbox" checked={it.tolOn} onChange={(e) => handleTolToggle(idx, e.target.checked)} />
-                                  <span className="ms-2 small">Toleransi / Hapus OT</span>
-                                </label>
-                              )}
-                            </>
+                            <div className="ot-auto-detail">
+                              {otLabel.length > 0 ? otLabel.join(' + ') : 'Tidak ada overtime'}
+                            </div>
                           )}
                         </div>
                         <div className="text-end">
                           {!isReturned ? (
                             <span className="text-secondary small">—</span>
-                          ) : it.tolOn ? (
-                            <span className="badge bg-success">GRATIS</span>
                           ) : (
                             <span className="bi-price">{fmtRp(it.otCost)}</span>
                           )}
@@ -290,18 +224,6 @@ function CalculateRentalModal({ session, onClose, onProceedPayment, currentUserR
                 <div className="total-all-label">Total Biaya Keseluruhan</div>
                 <div className="total-all-val">{fmtRp(baseSum + grandOT)}</div>
               </div>
-
-              {isAdmin && (
-                <div className="manual-adj-box mt-3 p-2 border rounded">
-                  <div className="small text-secondary mb-2">Koreksi Nominal Manual</div>
-                  <div className="d-flex gap-2">
-                    <button className="btn btn-sm btn-outline-danger" onClick={() => setManualAdj(prev => prev - 5000)}>-5rb</button>
-                    <span className="flex-grow-1 text-center align-self-center font-weight-bold">{fmtRp(manualAdj)}</span>
-                    <button className="btn btn-sm btn-outline-success" onClick={() => setManualAdj(prev => prev + 5000)}>+5rb</button>
-                    <button className="btn btn-sm btn-secondary" onClick={() => setManualAdj(0)}>Reset</button>
-                  </div>
-                </div>
-              )}
 
               <div className="d-flex gap-2 mt-4">
                 <button className="btn-sec flex-fill" onClick={onClose}>Batal</button>
