@@ -1,6 +1,6 @@
-# 🛴 Kasir Sheet — Scooter & Stroller Rental POS System ⚡
+# 🛴 Kasir DB — Scooter & Stroller Rental POS System ⚡
 
-[![Build & Test](https://img.shields.io/badge/tests-49%20passed-brightgreen.svg)](https://github.com/sanixmon/kasir-sheet)
+[![Build & Test](https://img.shields.io/badge/tests-49%20passed-brightgreen.svg)](https://github.com/sanixmon/kasir-db)
 [![React](https://img.shields.io/badge/React-19.0-61dafb.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-6.0-646cff.svg)](https://vitejs.dev/)
 [![Backend](https://img.shields.io/badge/Backend-Google%20Apps%20Script-34a853.svg)](https://developers.google.com/apps-script)
@@ -58,8 +58,8 @@ A high-performance, real-time **Point of Sale (POS) & Rental Tracking System** d
 
 ### 1. Clone & Install
 ```bash
-git clone https://github.com/sanixmon/kasir-sheet.git
-cd kasir-sheet
+git clone https://github.com/sanixmon/kasir-db.git
+cd kasir-db
 pnpm install
 ```
 
@@ -99,7 +99,7 @@ To connect this frontend to your own Google Sheet:
 ## 📁 Project Structure
 
 ```
-kasir-sheet/
+kasir-db/
 ├── docs/
 │   └── google-apps-script/
 │       ├── Code.gs             # Complete Apps Script backend code

@@ -30,3 +30,6 @@ __pycache__/
 *.pyc
 data/
 *.db*
+test-results/
+playwright-report/
+artifacts/

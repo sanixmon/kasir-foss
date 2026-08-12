@@ -123,6 +123,16 @@ function App() {
   const loadData = async () => {
     try {
       setIsSyncing(true);
+
+      // Reset nomor antrian lokal saat berganti shift/hari
+      const currentShiftDate = getShiftDate();
+      const storedShiftDate = localStorage.getItem('kw_shiftDate');
+      if (storedShiftDate !== currentShiftDate) {
+        localStorage.setItem('kw_shiftDate', currentShiftDate);
+        localStorage.removeItem('kw_shiftQNo');
+        setShiftQueueNo(0);
+      }
+
       const data = await fetchAllData();
       if (data && !data.error) {
         const sessions = Array.isArray(data.sessions)
