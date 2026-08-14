@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './components/LoginPage';
-import { fetchAllData, addSession, editSession, claimSession, deleteSession, deleteTxn, clearAllTxns, saveSetting, verifyAdminPassword, changeAdminPassword, addDeletionLog, getDeletionLogs, loginAdmin, setAuthToken } from './api';
+import { fetchAllData, addSession, editSession, claimSession, deleteSession, deleteTxn, clearAllTxns, saveSetting, verifyAdminPassword, changeAdminPassword, addDeletionLog, getDeletionLogs, loginAdmin, setAuthToken, setEscalationToken, clearEscalationToken } from './api';
 import { swalSuccess, swalError, swalWarning, swalConfirm } from './lib/swal';
 import { checkShiftExpiration, getShiftDate } from './lib/shift';
 import { fmtRp, fmtDur, generateShortId, safeSetItem, normalizeItems, normalizeSession, normalizeTxn } from './lib/utils';
@@ -105,17 +105,22 @@ function App() {
     setShowLogoutConfirm(true);
   };
 
+  const clearSessionState = () => {
+    setAuthToken(null);
+    clearEscalationToken();
+    localStorage.removeItem('kw_currentUser');
+    localStorage.removeItem('kw_shiftQNo');
+    localStorage.removeItem('kw_userRole');
+    setShiftQueueNo(0);
+    setCurrentShiftUser(null);
+    setCurrentUserRole(null);
+  };
+
   const doLogout = () => {
     if (logoutConfirmName.trim().toLowerCase() !== (currentShiftUser || '').toLowerCase()) {
       return;
     }
-    localStorage.removeItem('kw_currentUser');
-    localStorage.removeItem('kw_shiftQNo');
-    localStorage.removeItem('kw_userRole');
-    setAuthToken(null);
-    setShiftQueueNo(0);
-    setCurrentShiftUser(null);
-    setCurrentUserRole(null);
+    clearSessionState();
     setShowLogoutConfirm(false);
   };
 
@@ -154,6 +159,12 @@ function App() {
         setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
       }
     } catch (err) {
+      if (err?.status === 401 || err?.code === 'UNAUTHORIZED') {
+        // Token missing/expired → force a single clean re-login instead of
+        // silently showing empty/offline data.
+        clearSessionState();
+        return;
+      }
       console.error('API polling error:', err);
       setApiConnected(false);
     } finally {
@@ -370,6 +381,8 @@ function App() {
         console.error('Failed to delete transaction on server:', e);
         // Rollback on error
         await loadData();
+      } finally {
+        clearEscalationToken();
       }
     }
   };
@@ -402,6 +415,7 @@ function App() {
     if (pendingAction.type === 'editSession') {
       setActiveEditSession(pendingAction.session);
       setPendingAction(null);
+      clearEscalationToken(); // edit_session is not admin-only
     } else if (pendingAction.type === 'deleteTxn') {
       handleDeleteTxn(pendingAction.id);
       setPendingAction(null);
@@ -708,7 +722,7 @@ function App() {
         <PasswordVerificationModal
           onVerify={async (pwd) => {
             const res = await verifyAdminPassword(pwd);
-            if (res?.valid) setAuthToken(res.token);
+            if (res?.valid) setEscalationToken(res.token);
             return res;
           }}
           onClose={() => setPendingAction(null)}

@@ -2,7 +2,18 @@ let APPS_SCRIPT_URL = typeof import.meta !== 'undefined' && import.meta.env && i
   ? import.meta.env.VITE_APPS_SCRIPT_URL
   : '/api';
 
-let authToken = null;
+// Auth token is persisted so a page refresh / reopen does NOT force a re-login.
+// The SQLite-backed token survives backend restarts; the browser survives refresh.
+const AUTH_TOKEN_KEY = 'kw_authToken';
+
+let authToken = (() => {
+  try { return localStorage.getItem(AUTH_TOKEN_KEY) || null; } catch { return null; }
+})();
+
+// Short-lived admin escalation token (10 min) used for a single destructive
+// action (e.g. cashier deleting a txn after admin re-verification). It is kept
+// separate and NEVER replaces the main token, so the session isn't clobbered.
+let escalationToken = null;
 
 export function setApiUrl(url) {
   APPS_SCRIPT_URL = url;
@@ -10,14 +21,27 @@ export function setApiUrl(url) {
 
 export function setAuthToken(token) {
   authToken = token || null;
+  try {
+    if (token) localStorage.setItem(AUTH_TOKEN_KEY, token);
+    else localStorage.removeItem(AUTH_TOKEN_KEY);
+  } catch { /* localStorage unavailable (private mode) — keep in-memory only */ }
 }
 
 export function getAuthToken() {
   return authToken;
 }
 
+export function setEscalationToken(token) {
+  escalationToken = token || null;
+}
+
+export function clearEscalationToken() {
+  escalationToken = null;
+}
+
 function authHeaders() {
-  return authToken ? { Authorization: `Bearer ${authToken}` } : {};
+  const t = escalationToken || authToken;
+  return t ? { Authorization: `Bearer ${t}` } : {};
 }
 
 export async function apiCall(action, payload = {}, timeoutMs = 8000) {
@@ -35,7 +59,15 @@ export async function apiCall(action, payload = {}, timeoutMs = 8000) {
       signal: controller.signal
     });
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      let code = null;
+      try {
+        const body = await response.json();
+        code = body?.code || null;
+      } catch { /* non-JSON error body */ }
+      const err = new Error(`HTTP error! status: ${response.status}`);
+      err.status = response.status;
+      err.code = code;
+      throw err;
     }
     return await response.json();
   } catch (error) {
