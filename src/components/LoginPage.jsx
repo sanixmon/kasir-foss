@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { loginCashier } from '../api';
+import { loginCashier, setAuthToken } from '../api';
 
 function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('');
@@ -18,6 +18,7 @@ function LoginPage({ onLogin }) {
     try {
       const res = await loginCashier(trimmed, password);
       if (res && res.success) {
+        setAuthToken(res.token);
         onLogin(res.user.username);
       } else {
         setError(res?.error || 'Login gagal');

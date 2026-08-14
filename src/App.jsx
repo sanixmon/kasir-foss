@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import LoginPage from './components/LoginPage';
-import { fetchAllData, addSession, editSession, claimSession, deleteSession, deleteTxn, clearAllTxns, saveSetting, verifyAdminPassword, changeAdminPassword, addDeletionLog, getDeletionLogs } from './api';
+import { fetchAllData, addSession, editSession, claimSession, deleteSession, deleteTxn, clearAllTxns, saveSetting, verifyAdminPassword, changeAdminPassword, addDeletionLog, getDeletionLogs, loginAdmin, setAuthToken } from './api';
 import { swalSuccess, swalError, swalWarning, swalConfirm } from './lib/swal';
 import { checkShiftExpiration, getShiftDate } from './lib/shift';
 import { fmtRp, fmtDur, generateShortId, safeSetItem, normalizeItems, normalizeSession, normalizeTxn } from './lib/utils';
@@ -112,6 +112,7 @@ function App() {
     localStorage.removeItem('kw_currentUser');
     localStorage.removeItem('kw_shiftQNo');
     localStorage.removeItem('kw_userRole');
+    setAuthToken(null);
     setShiftQueueNo(0);
     setCurrentShiftUser(null);
     setCurrentUserRole(null);
@@ -507,12 +508,13 @@ function App() {
         }}
         onSelectAdmin={async (pwd) => {
           try {
-            const res = await verifyAdminPassword(pwd);
-            if (res?.valid) {
+            const res = await loginAdmin(pwd);
+            if (res?.success) {
+              setAuthToken(res.token);
               setCurrentUserRole('admin');
               localStorage.setItem('kw_userRole', 'admin');
             } else {
-              swalError('Password Salah', 'Password admin tidak sesuai.');
+              swalError('Password Salah', res?.error || 'Password admin tidak sesuai.');
             }
           } catch {
             swalError('Koneksi Gagal', 'Tidak dapat terhubung ke server.');
@@ -704,7 +706,11 @@ function App() {
 
       {pendingAction && (
         <PasswordVerificationModal
-          onVerify={verifyAdminPassword}
+          onVerify={async (pwd) => {
+            const res = await verifyAdminPassword(pwd);
+            if (res?.valid) setAuthToken(res.token);
+            return res;
+          }}
           onClose={() => setPendingAction(null)}
           onVerifySuccess={handleVerifySuccess}
         />

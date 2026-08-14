@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { fetchAllData } from '../api';
+import { trackSession } from '../api';
 import { fmtDur, fmtRp } from '../App';
 import { calcOTCost } from '../lib/ot';
 import { ITEMS } from '../App';
@@ -34,9 +34,9 @@ function TrackingPage({ trackingId }) {
 
       // 1. Prioritaskan Cek Cloud Backend
       try {
-        const data = await fetchAllData();
+        const data = await trackSession(cleanId);
         if (data && isMounted) {
-          const cloudSess = (data.sessions || []).find(s => s && s.id === cleanId);
+          const cloudSess = data.session;
           if (cloudSess) {
             setTxn(null);
             setSession({
@@ -52,7 +52,7 @@ function TrackingPage({ trackingId }) {
             return;
           }
 
-          const cloudTxn = (data.transactions || []).find(t => t && t.id === cleanId);
+          const cloudTxn = data.transaction;
           if (cloudTxn) {
             setSession(null);
             setTxn({

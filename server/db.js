@@ -1,9 +1,50 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 
 let db;
 let dbPath; // store for backup
+
+// ── Server-side session tokens ──────────────────────────────────────────────
+// Auth tokens are persisted in SQLite so they survive backend restarts and
+// work regardless of PM2 exec mode (fork/cluster). Each maps to a
+// { username, role } session with an expiry.
+const LOGIN_TOKEN_TTL_MS = 12 * 60 * 60 * 1000;  // 12 hours (one shift)
+const ESCALATION_TOKEN_TTL_MS = 10 * 60 * 1000;   // 10 minutes for admin re-verification
+
+// Actions callable without any token (public entry points).
+const PUBLIC_ACTIONS = new Set(['login_cashier', 'login_admin', 'track_session']);
+
+// Actions that additionally require an admin role token.
+const ADMIN_ONLY_ACTIONS = new Set([
+  'save_setting', 'save_user', 'delete_user', 'delete_txn', 'clear_all_txns',
+  'change_admin_pass', 'backup_db', 'get_deletion_logs', 'add_deletion_log'
+]);
+
+export function issueToken(username, role, ttlMs = LOGIN_TOKEN_TTL_MS) {
+  const token = crypto.randomBytes(32).toString('hex');
+  db.prepare('INSERT OR REPLACE INTO auth_tokens (token, username, role, expires_at) VALUES (?, ?, ?, ?)')
+    .run(token, username, role, Date.now() + ttlMs);
+  // Opportunistically prune expired tokens so the table stays small.
+  db.prepare('DELETE FROM auth_tokens WHERE expires_at <= ?').run(Date.now());
+  return token;
+}
+
+export function resolveToken(token) {
+  if (!token) return null;
+  const row = db.prepare('SELECT username, role, expires_at AS expiresAt FROM auth_tokens WHERE token = ?').get(token);
+  if (!row) return null;
+  if (Date.now() > row.expiresAt) {
+    db.prepare('DELETE FROM auth_tokens WHERE token = ?').run(token);
+    return null;
+  }
+  return { username: row.username, role: row.role };
+}
+
+export function revokeToken(token) {
+  if (token) db.prepare('DELETE FROM auth_tokens WHERE token = ?').run(token);
+}
 
 export function initDb(pathArg) {
   dbPath = pathArg;
@@ -69,6 +110,13 @@ export function initDb(pathArg) {
       txn_total_all REAL DEFAULT 0,
       deleted_at INTEGER,
       deleted_by TEXT DEFAULT 'admin'
+    );
+
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+      token TEXT PRIMARY KEY,
+      username TEXT,
+      role TEXT,
+      expires_at INTEGER
     );
   `);
 
@@ -422,6 +470,48 @@ export function changeAdminPassword(oldPassword, newPassword) {
   return { success: true };
 }
 
+/**
+ * Admin login — issues a full admin token. Mirrors the old client-side
+ * `verify_admin` used by RoleSelection, but now server-verified + tokenized.
+ */
+export function loginAdmin(payload) {
+  const password = String(payload?.password || '');
+  if (!password) return { success: false, error: 'Password admin harus diisi' };
+  if (!verifyAdminPassword(password).valid) {
+    return { success: false, error: 'Password admin tidak sesuai!' };
+  }
+  return {
+    success: true,
+    user: { username: 'admin', role: 'admin' },
+    token: issueToken('admin', 'admin')
+  };
+}
+
+/**
+ * Re-verification used before destructive actions (delete txn, clear history,
+ * edit session). Requires an existing valid session token (any role) and the
+ * correct admin password, then issues a short-lived escalation admin token.
+ */
+export function verifyAdmin(payload) {
+  const password = String(payload?.password || '');
+  if (!verifyAdminPassword(password).valid) return { valid: false };
+  return { valid: true, token: issueToken('admin', 'admin', ESCALATION_TOKEN_TTL_MS) };
+}
+
+/**
+ * Public minimal lookup for the customer QR tracking page — returns only the
+ * requested session/transaction, never the full dataset.
+ */
+export function trackSession(payload) {
+  const id = String(payload?.id || '').trim();
+  if (!id) return { error: 'ID sesi diperlukan' };
+  const sess = db.prepare('SELECT * FROM active_sessions WHERE id = ?').get(id);
+  if (sess) return { session: formatSessionFromDb(sess) };
+  const txn = db.prepare('SELECT * FROM transactions WHERE id = ?').get(id);
+  if (txn) return { transaction: formatTransactionFromDb(txn) };
+  return { error: 'Sesi tidak ditemukan atau sudah dihapus.' };
+}
+
 export function loginCashier(payload) {
   const username = String(payload?.username || '').trim();
   const password = String(payload?.password || '');
@@ -439,7 +529,12 @@ export function loginCashier(payload) {
   if (password !== row.password) {
     return { success: false, error: 'Password shift tidak sesuai!' };
   }
-  return { success: true, user: { username: row.username, role: row.role || 'cashier' } };
+  const role = row.role || 'cashier';
+  return {
+    success: true,
+    user: { username: row.username, role },
+    token: issueToken(row.username, role)
+  };
 }
 
 export function backupDatabase() {
@@ -457,7 +552,18 @@ export function backupDatabase() {
   }
 }
 
-export function handleAction(action, payload) {
+export function handleAction(action, payload, auth) {
+  // Authorization gate: everything except public actions needs a valid token;
+  // admin-only actions additionally require an admin role.
+  if (!PUBLIC_ACTIONS.has(action)) {
+    if (!auth) {
+      return { error: 'Unauthorized: login required', code: 'UNAUTHORIZED' };
+    }
+    if (ADMIN_ONLY_ACTIONS.has(action) && auth.role !== 'admin') {
+      return { error: 'Forbidden: admin role required', code: 'FORBIDDEN' };
+    }
+  }
+
   switch (action) {
     case 'fetch_data':
       return fetchAllData();
@@ -480,11 +586,15 @@ export function handleAction(action, payload) {
     case 'clear_all_txns':
       return clearAllTxns();
     case 'verify_admin':
-      return verifyAdminPassword(payload.password);
+      return verifyAdmin(payload);
     case 'change_admin_pass':
       return changeAdminPassword(payload.old_password, payload.new_password);
     case 'login_cashier':
       return loginCashier(payload);
+    case 'login_admin':
+      return loginAdmin(payload);
+    case 'track_session':
+      return trackSession(payload);
     case 'backup_db':
       return backupDatabase();
     case 'add_deletion_log':

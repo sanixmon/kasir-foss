@@ -1,7 +1,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { initDb, handleAction, fetchAllData, backupDatabase } from './db.js';
+import { initDb, handleAction, fetchAllData, backupDatabase, resolveToken } from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +22,13 @@ export function createHttpServer() {
       return;
     }
 
+    const bearerToken = (() => {
+      const h = req.headers['authorization'];
+      if (!h) return null;
+      const m = /^Bearer\s+(.+)$/i.exec(h);
+      return m ? m[1].trim() : null;
+    })();
+
     const cleanPath = (req.url || '/').split('?')[0];
     if (cleanPath !== '/' && cleanPath !== '/api') {
       res.writeHead(404, { 'Content-Type': 'application/json' });
@@ -30,6 +37,11 @@ export function createHttpServer() {
     }
 
     if (req.method === 'GET') {
+      if (!resolveToken(bearerToken)) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Unauthorized: login required', code: 'UNAUTHORIZED' }));
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(fetchAllData()));
       return;
@@ -56,9 +68,14 @@ export function createHttpServer() {
           const data = JSON.parse(body || '{}');
           const action = data.action || 'fetch_data';
           const payload = data.payload || {};
+          const token = bearerToken || (data.token ? String(data.token) : null);
+          const auth = resolveToken(token);
 
-          const result = handleAction(action, payload);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
+          const result = handleAction(action, payload, auth);
+          const status = result && result.code === 'UNAUTHORIZED' ? 401
+            : result && result.code === 'FORBIDDEN' ? 403
+            : 200;
+          res.writeHead(status, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify(result));
         } catch (err) {
           if (err instanceof SyntaxError) {
