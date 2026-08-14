@@ -432,9 +432,11 @@ export function loginCashier(payload) {
   if (!row) {
     return { success: false, error: 'Nama kasir tidak ditemukan!' };
   }
-  // Empty stored password keeps the legacy default 'jayalahevren'.
-  const validPass = (row.password && row.password !== '') ? row.password : 'jayalahevren';
-  if (password !== validPass) {
+  // Empty stored password is rejected — no default/fallback password.
+  if (!row.password || row.password === '') {
+    return { success: false, error: 'Password belum di-set. Hubungi admin.' };
+  }
+  if (password !== row.password) {
     return { success: false, error: 'Password shift tidak sesuai!' };
   }
   return { success: true, user: { username: row.username, role: row.role || 'cashier' } };
