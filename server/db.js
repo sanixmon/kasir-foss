@@ -24,8 +24,8 @@ const ADMIN_ONLY_ACTIONS = new Set([
 
 export function issueToken(username, role, ttlMs = LOGIN_TOKEN_TTL_MS) {
   const token = crypto.randomBytes(32).toString('hex');
-  db.prepare('INSERT OR REPLACE INTO auth_tokens (token, username, role, expires_at) VALUES (?, ?, ?, ?)')
-    .run(token, username, role, Date.now() + ttlMs);
+  db.prepare('INSERT OR REPLACE INTO auth_tokens (token, username, role, expires_at, ttl_ms) VALUES (?, ?, ?, ?, ?)')
+    .run(token, username, role, Date.now() + ttlMs, ttlMs);
   // Opportunistically prune expired tokens so the table stays small.
   db.prepare('DELETE FROM auth_tokens WHERE expires_at <= ?').run(Date.now());
   return token;
@@ -33,12 +33,16 @@ export function issueToken(username, role, ttlMs = LOGIN_TOKEN_TTL_MS) {
 
 export function resolveToken(token) {
   if (!token) return null;
-  const row = db.prepare('SELECT username, role, expires_at AS expiresAt FROM auth_tokens WHERE token = ?').get(token);
+  const row = db.prepare('SELECT username, role, expires_at AS expiresAt, ttl_ms AS ttlMs FROM auth_tokens WHERE token = ?').get(token);
   if (!row) return null;
   if (Date.now() > row.expiresAt) {
     db.prepare('DELETE FROM auth_tokens WHERE token = ?').run(token);
     return null;
   }
+  // Sliding expiration: keep a session alive while it is actively used, so an
+  // open POS/web client never gets force-logged-out mid-shift.
+  const ttl = Number(row.ttlMs) || LOGIN_TOKEN_TTL_MS;
+  db.prepare('UPDATE auth_tokens SET expires_at = ? WHERE token = ?').run(Date.now() + ttl, token);
   return { username: row.username, role: row.role };
 }
 
@@ -119,6 +123,13 @@ export function initDb(pathArg) {
       expires_at INTEGER
     );
   `);
+
+  // Migration: record each token's own TTL so sliding expiration extends the
+  // right amount (login tokens by 12h, escalation tokens by 10 min).
+  const cols = db.prepare('PRAGMA table_info(auth_tokens)').all();
+  if (!cols.some(c => c.name === 'ttl_ms')) {
+    db.exec('ALTER TABLE auth_tokens ADD COLUMN ttl_ms INTEGER');
+  }
 
   return db;
 }
