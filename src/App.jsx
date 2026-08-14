@@ -91,6 +91,11 @@ function App() {
 
   const todayStr = (ts) => getShiftDate(ts);
 
+  // Authenticated = completed login (admin, or cashier with a shift user).
+  // Until then we must NOT poll, otherwise the 5s unauthenticated request
+  // fires mid-login and resets the role selection back to the portal buttons.
+  const isAuthenticated = currentUserRole === 'admin' || (currentUserRole === 'cashier' && !!currentShiftUser);
+
   const handleLogin = (user) => {
     const cName = user.charAt(0).toUpperCase() + user.slice(1);
     setCurrentShiftUser(cName);
@@ -161,7 +166,8 @@ function App() {
     } catch (err) {
       if (err?.status === 401 || err?.code === 'UNAUTHORIZED') {
         // Token missing/expired → force a single clean re-login instead of
-        // silently showing empty/offline data.
+        // silently showing empty/offline data. Polling is gated on
+        // isAuthenticated, so a 401 here means a real (expired/invalid) session.
         clearSessionState();
         return;
       }
@@ -196,14 +202,18 @@ function App() {
     checkHash();
     window.addEventListener('hashchange', checkHash);
 
-    loadData();
-    const interval = setInterval(loadData, 5000);
-
     return () => {
       window.removeEventListener('hashchange', checkHash);
-      clearInterval(interval);
     };
   }, []);
+
+  // Poll the server only once authenticated — never while on the login screens.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    loadData();
+    const interval = setInterval(loadData, 5000);
+    return () => clearInterval(interval);
+  }, [isAuthenticated]);
 
 
 
