@@ -1,40 +1,31 @@
 import React, { useState } from 'react';
+import { loginCashier } from '../api';
 
-function LoginPage({ users = [], onLogin }) {
+function LoginPage({ onLogin }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (isSubmitting) return;
     const trimmed = username.trim();
     if (!trimmed) { setError('Ketik nama kasir terlebih dahulu!'); return; }
-
-    if (!users || users.length === 0) {
-      setError('Belum ada akun kasir. Silakan hubungi admin.');
-      return;
-    }
-
-    const userMatch = users.find(u =>
-      u.username && u.username.toLowerCase() === trimmed.toLowerCase()
-    );
-    if (!userMatch) { setError('Nama kasir tidak ditemukan!'); return; }
-
-    const validPass = (userMatch.password !== undefined && userMatch.password !== null && userMatch.password !== '') 
-      ? userMatch.password 
-      : 'jayalahevren';
-    if (password !== validPass) {
-      setError('Password shift tidak sesuai!');
-      return;
-    }
+    if (!password) { setError('Password shift harus diisi!'); return; }
 
     setError('');
     setIsSubmitting(true);
     try {
-      onLogin(userMatch.username);
+      const res = await loginCashier(trimmed, password);
+      if (res && res.success) {
+        onLogin(res.user.username);
+      } else {
+        setError(res?.error || 'Login gagal');
+      }
+    } catch (e) {
+      setError('Tidak dapat terhubung ke server');
     } finally {
-      setTimeout(() => setIsSubmitting(false), 1000);
+      setIsSubmitting(false);
     }
   };
 

@@ -526,7 +526,7 @@ function App() {
     return (
       <div>
         <div className="p-2"><button className="btn btn-sm btn-outline-secondary" onClick={() => { setCurrentUserRole(null); localStorage.removeItem('kw_userRole'); }}>&larr; Ganti Role</button></div>
-        <LoginPage users={users} onLogin={handleLogin} />
+        <LoginPage onLogin={handleLogin} />
       </div>
     );
   }

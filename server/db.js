@@ -133,7 +133,8 @@ export function getDeletedTxnsListFromDb() {
 export function fetchAllData() {
   const sessionsRows = db.prepare('SELECT * FROM active_sessions').all();
   const txnsRows = db.prepare('SELECT * FROM transactions ORDER BY no ASC').all();
-  const usersRows = db.prepare('SELECT username, password, role FROM users').all();
+  // Never expose the password column — login is verified server-side (login_cashier).
+  const usersRows = db.prepare('SELECT username, role FROM users').all();
   const settingsRows = db.prepare('SELECT key, value FROM settings').all();
   const deletedList = getDeletedTxnsListFromDb();
 
@@ -421,6 +422,24 @@ export function changeAdminPassword(oldPassword, newPassword) {
   return { success: true };
 }
 
+export function loginCashier(payload) {
+  const username = String(payload?.username || '').trim();
+  const password = String(payload?.password || '');
+  if (!username || !password) {
+    return { success: false, error: 'Username dan password harus diisi' };
+  }
+  const row = db.prepare('SELECT username, password, role FROM users WHERE LOWER(username) = LOWER(?)').get(username);
+  if (!row) {
+    return { success: false, error: 'Nama kasir tidak ditemukan!' };
+  }
+  // Empty stored password keeps the legacy default 'jayalahevren'.
+  const validPass = (row.password && row.password !== '') ? row.password : 'jayalahevren';
+  if (password !== validPass) {
+    return { success: false, error: 'Password shift tidak sesuai!' };
+  }
+  return { success: true, user: { username: row.username, role: row.role || 'cashier' } };
+}
+
 export function backupDatabase() {
   if (!dbPath) return { success: false, error: 'DB path not set' };
   const dir = path.join(path.dirname(dbPath), 'backups');
@@ -462,6 +481,8 @@ export function handleAction(action, payload) {
       return verifyAdminPassword(payload.password);
     case 'change_admin_pass':
       return changeAdminPassword(payload.old_password, payload.new_password);
+    case 'login_cashier':
+      return loginCashier(payload);
     case 'backup_db':
       return backupDatabase();
     case 'add_deletion_log':

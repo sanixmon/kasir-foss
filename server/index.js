@@ -83,7 +83,7 @@ const PORT = process.env.PORT || 3001;
 
 if (process.env.NODE_ENV !== 'test') {
   const server = createHttpServer();
-  server.listen(PORT, () => {
+  server.listen(PORT, '127.0.0.1', () => {
     console.log(`🚀 Kasir DB Server running on http://localhost:${PORT}`);
     const result = backupDatabase();
     if (result.success) {
