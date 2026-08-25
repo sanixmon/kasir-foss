@@ -8,13 +8,11 @@ function LoginPage({ onLogin }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleLogin = async () => {
-    if (isSubmitting) return;
     const trimmed = username.trim();
     if (!trimmed) { setError('Ketik nama kasir terlebih dahulu!'); return; }
     if (!password) { setError('Password shift harus diisi!'); return; }
 
     setError('');
-    setIsSubmitting(true);
     try {
       const res = await loginCashier(trimmed, password);
       if (res && res.success) {

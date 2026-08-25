@@ -104,13 +104,17 @@ describe('User / Cashier CRUD API Unit Tests', () => {
     expect(result).toEqual({ success: true });
   });
 
-  it('LOGIN SYSTEM: LoginPage validates against custom password inputted from Admin Menu instead of default password', () => {
+  it('LOGIN SYSTEM: LoginPage validates against custom password inputted from Admin Menu instead of default password', async () => {
     const mockOnLogin = vi.fn();
-    const customUsers = [
-      { username: 'rani', password: 'customPassword123', role: 'cashier' }
-    ];
+    const api = await import('../api');
+    vi.spyOn(api, 'loginCashier').mockImplementation(async (username, password) => {
+      if (username.toLowerCase() === 'rani' && password === 'customPassword123') {
+        return { success: true, user: { username: 'rani', role: 'cashier' }, token: 'token-123' };
+      }
+      return { success: false, error: 'Password shift tidak sesuai!' };
+    });
 
-    render(<LoginPage users={customUsers} onLogin={mockOnLogin} />);
+    render(<LoginPage onLogin={mockOnLogin} />);
     
     // Type username & try default password
     const usernameInput = screen.getByPlaceholderText('Ketik nama kasir...');
@@ -122,23 +126,28 @@ describe('User / Cashier CRUD API Unit Tests', () => {
     fireEvent.click(loginButton);
 
     // Should reject default password when custom password is set
-    expect(screen.getByText('Password shift tidak sesuai!')).toBeInTheDocument();
+    expect(await screen.findByText('Password shift tidak sesuai!')).toBeInTheDocument();
     expect(mockOnLogin).not.toHaveBeenCalled();
 
     // Enter correct custom password
     fireEvent.change(passwordInput, { target: { value: 'customPassword123' } });
     fireEvent.click(loginButton);
 
+    expect(await screen.findByText(/EVREN HOUSE/)).toBeInTheDocument();
     expect(mockOnLogin).toHaveBeenCalledWith('rani');
   });
 
-  it('LOGIN SYSTEM: LoginPage falls back to default password only when password is not set in DB', () => {
+  it('LOGIN SYSTEM: LoginPage falls back to default password only when password is not set in DB', async () => {
     const mockOnLogin = vi.fn();
-    const noPassUsers = [
-      { username: 'akbar', password: '', role: 'cashier' }
-    ];
+    const api = await import('../api');
+    vi.spyOn(api, 'loginCashier').mockImplementation(async (username, password) => {
+      if (username.toLowerCase() === 'akbar' && password === 'jayalahevren') {
+        return { success: true, user: { username: 'akbar', role: 'cashier' }, token: 'token-123' };
+      }
+      return { success: false, error: 'Password shift tidak sesuai!' };
+    });
 
-    render(<LoginPage users={noPassUsers} onLogin={mockOnLogin} />);
+    render(<LoginPage onLogin={mockOnLogin} />);
 
     const usernameInput = screen.getByPlaceholderText('Ketik nama kasir...');
     const passwordInput = screen.getByPlaceholderText('Password shift...');
@@ -148,6 +157,7 @@ describe('User / Cashier CRUD API Unit Tests', () => {
     fireEvent.change(passwordInput, { target: { value: 'jayalahevren' } });
     fireEvent.click(loginButton);
 
+    expect(await screen.findByText(/EVREN HOUSE/)).toBeInTheDocument();
     expect(mockOnLogin).toHaveBeenCalledWith('akbar');
   });
 });

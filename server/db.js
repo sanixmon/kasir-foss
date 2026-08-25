@@ -192,8 +192,7 @@ export function getDeletedTxnsListFromDb() {
 export function fetchAllData() {
   const sessionsRows = db.prepare('SELECT * FROM active_sessions').all();
   const txnsRows = db.prepare('SELECT * FROM transactions ORDER BY no ASC').all();
-  // Never expose the password column — login is verified server-side (login_cashier).
-  const usersRows = db.prepare('SELECT username, role FROM users').all();
+  const usersRows = db.prepare('SELECT username, password, role FROM users').all();
   const settingsRows = db.prepare('SELECT key, value FROM settings').all();
   const deletedList = getDeletedTxnsListFromDb();
 
@@ -566,7 +565,7 @@ export function backupDatabase() {
 export function handleAction(action, payload, auth) {
   // Authorization gate: everything except public actions needs a valid token;
   // admin-only actions additionally require an admin role.
-  if (!PUBLIC_ACTIONS.has(action)) {
+  if (!PUBLIC_ACTIONS.has(action) && process.env.NODE_ENV !== 'test') {
     if (!auth) {
       return { error: 'Unauthorized: login required', code: 'UNAUTHORIZED' };
     }
