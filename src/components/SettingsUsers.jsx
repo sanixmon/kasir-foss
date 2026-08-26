@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { saveUser, deleteUser } from '../api';
 import { swalSuccess, swalError, swalWarning, swalConfirm } from '../lib/swal';
 
-function SettingsUsers({ users, onSyncPull }) {
+function SettingsUsers({ users = [], onSyncPull }) {
   const [newUserUsername, setNewUserUsername] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
   const [newUserRole, setNewUserRole] = useState('cashier');
@@ -22,7 +22,7 @@ function SettingsUsers({ users, onSyncPull }) {
       setIsSavingUser(true);
       const res = await saveUser(uname, pwd, newUserRole);
       if (res && !res.error) {
-        swalSuccess(`Kasir "${uname}" berhasil disimpan!`);
+        swalSuccess(`Pengguna "${uname}" berhasil disimpan!`);
         setNewUserUsername('');
         setNewUserPassword('');
         if (onSyncPull) onSyncPull();
@@ -68,14 +68,14 @@ function SettingsUsers({ users, onSyncPull }) {
         <div className="panel-body">
           <form onSubmit={handleSaveUser} className="mb-4 p-3 border rounded-3" style={{ background: 'var(--bg3)' }}>
             <div className="fw-bold small mb-2" style={{ color: 'var(--text)' }}>
-              <i className="bi bi-person-plus-fill me-1 clr-green"></i>Tambah / Reset Password Kasir
+              <i className="bi bi-person-plus-fill me-1 clr-green"></i>Tambah / Reset Password Pengguna
             </div>
             <div className="row g-2">
               <div className="col-12 col-sm-5">
                 <input 
                   type="text" 
                   className="cfield w-100" 
-                  placeholder="Username kasir (cth: akbar)" 
+                  placeholder="Username (cth: kasir1)" 
                   value={newUserUsername}
                   onChange={(e) => setNewUserUsername(e.target.value)}
                 />
@@ -105,13 +105,13 @@ function SettingsUsers({ users, onSyncPull }) {
                   className="btn btn-sm btn-success w-100 font-weight-bold" 
                   disabled={isSavingUser}
                 >
-                  {isSavingUser ? 'Menyimpan...' : 'Simpan User ke Cloud Backend'}
+                  {isSavingUser ? 'Menyimpan...' : 'Simpan Pengguna'}
                 </button>
               </div>
             </div>
           </form>
 
-          <div className="fw-bold small text-secondary mb-2">Daftar Akun Kasir Terdaftar</div>
+          <div className="fw-bold small text-secondary mb-2">Daftar Akun Pengguna Terdaftar</div>
           <div className="row row-cols-2 row-cols-sm-4 g-2">
             {users.map(u => (
               <div className="col" key={u.username}>

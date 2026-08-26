@@ -354,6 +354,7 @@ function App() {
         {activeTab === 'pengaturan' && currentUserRole === 'admin' && (
           <SettingsTab
             users={users}
+            outlets={outlets}
             transactions={transactions}
             activeSessions={activeSessions}
             currentShiftUser={currentShiftUser}
