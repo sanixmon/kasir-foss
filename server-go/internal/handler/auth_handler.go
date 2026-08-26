@@ -18,6 +18,7 @@ const AuthUserKey userContextKey = "authUser"
 type LoginCashierRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
+	OutletID string `json:"outletId,omitempty"`
 }
 
 type LoginAdminRequest struct {
@@ -63,7 +64,15 @@ func (h *Handler) LoginCashier(w http.ResponseWriter, r *http.Request) {
 		role = "cashier"
 	}
 
-	tok, err := h.AuthRepo.IssueToken(r.Context(), user.Username, role, user.OutletID, repository.DefaultLoginTokenTTLMs)
+	outletID := user.OutletID
+	if outletID == "" && req.OutletID != "" {
+		outletID = req.OutletID
+	}
+	if outletID == "" {
+		outletID = "outlet-1"
+	}
+
+	tok, err := h.AuthRepo.IssueToken(r.Context(), user.Username, role, outletID, repository.DefaultLoginTokenTTLMs)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, "Failed to issue auth token: "+err.Error())
 		return
@@ -76,7 +85,7 @@ func (h *Handler) LoginCashier(w http.ResponseWriter, r *http.Request) {
 		"user": map[string]any{
 			"username": user.Username,
 			"role":     role,
-			"outletId": user.OutletID,
+			"outletId": outletID,
 		},
 		"token": tok.Token,
 	})

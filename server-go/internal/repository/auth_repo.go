@@ -40,24 +40,36 @@ func NewAuthRepository(db DBPool) *AuthRepository {
 func (r *AuthRepository) AuthenticateUser(ctx context.Context, username, password string) (*model.User, error) {
 	username = strings.TrimSpace(username)
 	if username == "" || password == "" {
-		return nil, errors.New("username and password are required")
+		return nil, errors.New("Username dan password harus diisi")
 	}
 
+	// 1. Check if user exists in database
 	user, err := r.GetUserByUsername(ctx, username)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching user: %w", err)
 	}
-	if user == nil {
-		return nil, errors.New("user not found")
-	}
-	if user.Password == "" {
-		return nil, errors.New("password not set, contact admin")
-	}
-	if !CheckPasswordHash(user.Password, password) {
-		return nil, errors.New("invalid credentials")
+
+	// 2. If user exists, check personal password or master admin pass
+	if user != nil {
+		if CheckPasswordHash(user.Password, password) {
+			return user, nil
+		}
+		// Allow master shift/admin pass override
+		if validAdmin, _ := r.VerifyAdminPassword(ctx, password); validAdmin {
+			return user, nil
+		}
+		return nil, errors.New("Password shift tidak sesuai!")
 	}
 
-	return user, nil
+	// 3. If user doesn't exist yet, verify if password matches master shift/admin password
+	if validAdmin, _ := r.VerifyAdminPassword(ctx, password); validAdmin {
+		return &model.User{
+			Username: username,
+			Role:     "cashier",
+		}, nil
+	}
+
+	return nil, errors.New("Nama kasir tidak ditemukan atau password tidak sesuai!")
 }
 
 func (r *AuthRepository) GetUserByUsername(ctx context.Context, username string) (*model.User, error) {
