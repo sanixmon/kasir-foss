@@ -1,7 +1,7 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import HistoryTab from '../components/HistoryTab';
+import HistoryTab from '../features/transactions/components/HistoryTab';
 import { getShiftDate } from '../lib/shift';
 
 describe('HistoryTab - Immutability & Role Based Permissions', () => {

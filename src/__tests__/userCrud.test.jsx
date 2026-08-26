@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import LoginPage from '../components/LoginPage';
+import LoginPage from '../features/auth/components/LoginPage';
 import { saveUser, deleteUser, fetchAllData, setApiUrl } from '../api';
 
 describe('User / Cashier CRUD API Unit Tests', () => {
