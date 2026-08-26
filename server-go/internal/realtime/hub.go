@@ -73,3 +73,13 @@ func (h *Hub) ActiveClientsCount() int {
 	defer h.mu.RUnlock()
 	return len(h.clients)
 }
+
+func (h *Hub) BroadcastShutdown() {
+	h.Broadcast(Event{
+		Type:     "SYSTEM_SHUTDOWN",
+		OutletID: "all",
+		Payload: map[string]string{
+			"message": "Server is shutting down or restarting gracefully. Clients will auto-reconnect.",
+		},
+	})
+}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,19 +19,21 @@ import (
 )
 
 func main() {
+	handler.InitStructuredLogger()
 	cfg := config.Load()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	log.Printf("Connecting to database at %s...", cfg.DatabaseURL)
+	slog.Info("Connecting to PostgreSQL database", "url", cfg.DatabaseURL)
 	pool, err := database.NewPool(ctx, cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("Failed to initialize database pool: %v", err)
+		slog.Error("Failed to initialize database pool", "error", err)
+		os.Exit(1)
 	}
 	defer pool.Close()
 
-	log.Println("Database connection pool established successfully.")
+	slog.Info("Database connection pool established successfully")
 
 	// Initialize repositories
 	outletRepo := repository.NewOutletRepository(pool)
@@ -60,7 +62,7 @@ func main() {
 	// Server startup in background goroutine
 	serverErr := make(chan error, 1)
 	go func() {
-		log.Printf("Kasir Backend server running on http://0.0.0.0:%s", cfg.Port)
+		slog.Info("Kasir Backend server running", "port", cfg.Port, "addr", "http://0.0.0.0:"+cfg.Port)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
@@ -72,17 +74,23 @@ func main() {
 
 	select {
 	case err := <-serverErr:
-		log.Fatalf("Server startup failed: %v", err)
+		slog.Error("Server startup failed", "error", err)
+		os.Exit(1)
 	case sig := <-quit:
-		log.Printf("Received signal %s, initiating graceful shutdown...", sig)
+		slog.Info("Received termination signal, initiating graceful shutdown", "signal", sig.String())
 	}
 
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 1. Notify all active SSE clients so they can pause and prepare reconnection
+	hub.BroadcastShutdown()
+	time.Sleep(100 * time.Millisecond)
+
+	// 2. Allow up to 30 seconds for active HTTP requests and in-flight transactions to drain
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		slog.Error("Server forced to shutdown", "error", err)
 	}
 
-	log.Println("Kasir Backend server stopped cleanly.")
+	slog.Info("Kasir Backend server stopped cleanly.")
 }

@@ -39,13 +39,17 @@ func NewRouter(h *Handler) http.Handler {
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	r.Use(StructuredLoggerMiddleware)
 	r.Use(middleware.Recoverer)
 	r.Use(CorsMiddleware(h.Config.CorsOrigin))
 
-	// Monitoring & Health Check
+	// Liveness Probe (process is running)
 	r.Get("/health", h.HandleHealth)
 	r.Get("/api/health", h.HandleHealth)
+
+	// Readiness Probe (database connected & ready for traffic)
+	r.Get("/ready", h.HandleReady)
+	r.Get("/api/ready", h.HandleReady)
 
 	// SSE Realtime Stream
 	r.Get("/api/stream", h.HandleStream)

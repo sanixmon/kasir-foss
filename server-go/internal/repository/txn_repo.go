@@ -129,9 +129,12 @@ func (r *TxnRepository) GetTransactionByID(ctx context.Context, id string) (*mod
 }
 
 func (r *TxnRepository) ClaimSession(ctx context.Context, payload model.ClaimSessionPayload) (*model.Transaction, error) {
-	tx, err := r.db.Begin(ctx)
+	tx, err := r.db.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
 	if err != nil {
-		return nil, fmt.Errorf("error starting transaction: %w", err)
+		tx, err = r.db.Begin(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("error starting transaction: %w", err)
+		}
 	}
 	defer func() {
 		_ = tx.Rollback(ctx)

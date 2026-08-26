@@ -17,9 +17,11 @@ func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error parsing db url: %w", err)
 	}
-	config.MaxConns = 25
-	config.MinConns = 2
-	config.MaxConnLifetime = 30 * time.Minute
+	config.MaxConns = 50
+	config.MinConns = 5
+	config.MaxConnLifetime = 1 * time.Hour
+	config.MaxConnIdleTime = 15 * time.Minute
+	config.HealthCheckPeriod = 1 * time.Minute
 
 	pool, err := pgxpool.NewWithConfig(ctx, config)
 	if err != nil {
