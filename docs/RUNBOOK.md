@@ -81,3 +81,35 @@ Configured in `internal/database/postgres.go`:
 - **MaxConnLifetime:** `1 Hour`
 - **MaxConnIdleTime:** `15 Minutes`
 - **Transaction Isolation:** `REPEATABLE READ` for checkout and rental claims.
+
+---
+
+## 6. 📌 Pre-Production & UAT Checklist
+
+### 1. Load Testing (Rate Limiter & DB Connection Pool)
+Run the load test tool to simulate 200 concurrent clients:
+```bash
+# Test readiness endpoint under 200 concurrent workers
+go run scripts/load_test.go -url=http://localhost:8080/ready -c=200 -n=2000
+
+# Test claim rate limiter (expecting 429 when bursting)
+go run scripts/load_test.go -url=http://localhost:8080/api/claim -c=50 -n=500
+```
+- **Target Metrics:** 0 database connection timeout errors (`5xx`), graceful `429 Too Many Requests` status under excessive load, and sub-10ms DB query latency.
+
+### 2. Environment Variables Verification
+Ensure all secrets and production endpoints are set (refer to `.env.production.example`):
+- `DATABASE_URL`: Production PostgreSQL URL with `sslmode=require`.
+- `ADMIN_PASSWORD`: Strong master admin password.
+- `TLS_CERT_FILE` & `TLS_KEY_FILE`: Absolute paths to valid SSL/TLS certs.
+- `COOKIE_SECURE`: Set to `true` on HTTPS.
+- `CORS_ORIGIN`: Whitelisted frontend domain (e.g. `https://kasir.yourdomain.com`).
+
+### 3. Disaster Recovery / Backup Restore Validation
+```bash
+# 1. Create a test backup
+./scripts/backup.sh
+
+# 2. Test restore in staging database
+./scripts/restore.sh /var/backups/kasir-db/kasir_kasir_db_*.sql.gz --force
+```
