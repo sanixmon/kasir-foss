@@ -17,7 +17,8 @@ func TestSettingHandler_GetAndSaveSettings(t *testing.T) {
 
 	client := h.Hub.Register("outlet-1")
 
-	// 1. GetSettings
+	// 1. GetSettings (Cashier auth)
+	mockAuthSession(mock, "cashier-tok", "kasir1", "cashier", "outlet-1")
 	mock.ExpectQuery(`SELECT key, value FROM settings WHERE \(outlet_id = 'global' OR outlet_id = \$1\) AND key != 'admin_pass'`).
 		WithArgs("outlet-1").
 		WillReturnRows(mock.NewRows([]string{"key", "value"}).
@@ -26,6 +27,7 @@ func TestSettingHandler_GetAndSaveSettings(t *testing.T) {
 
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodGet, "/api/settings?outlet_id=outlet-1", nil)
+	req.Header.Set("Authorization", "Bearer cashier-tok")
 	rr := httptest.NewRecorder()
 	router.ServeHTTP(rr, req)
 
@@ -41,7 +43,8 @@ func TestSettingHandler_GetAndSaveSettings(t *testing.T) {
 		t.Errorf("unexpected settings map: %+v", settings)
 	}
 
-	// 2. SaveSetting
+	// 2. SaveSetting (Admin auth)
+	mockAuthSession(mock, "admin-tok", "admin", "admin", "global")
 	mock.ExpectExec(`INSERT INTO settings \(key, outlet_id, value\)`).
 		WithArgs("hourly_rate", "outlet-1", "15000").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -53,6 +56,7 @@ func TestSettingHandler_GetAndSaveSettings(t *testing.T) {
 	})
 	saveReq := httptest.NewRequest(http.MethodPost, "/api/settings", bytes.NewReader(body))
 	saveReq.Header.Set("Content-Type", "application/json")
+	saveReq.Header.Set("Authorization", "Bearer admin-tok")
 	saveRR := httptest.NewRecorder()
 	router.ServeHTTP(saveRR, saveReq)
 

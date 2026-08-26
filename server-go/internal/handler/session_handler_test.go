@@ -16,6 +16,8 @@ func TestSessionHandler_GetSessions(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
 
+	mockAuthSession(mock, "cashier-token", "kasir1", "cashier", "outlet-1")
+
 	now := time.Now()
 	rows := mock.NewRows([]string{
 		"id", "outlet_id", "queue_no", "nama", "items", "start_time", "tanggal", "pay_awal", "created_at",
@@ -27,6 +29,7 @@ func TestSessionHandler_GetSessions(t *testing.T) {
 
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodGet, "/api/sessions?outlet_id=outlet-1", nil)
+	req.Header.Set("Authorization", "Bearer cashier-token")
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -51,6 +54,8 @@ func TestSessionHandler_GetSessions(t *testing.T) {
 func TestSessionHandler_AddSession(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
+
+	mockAuthSession(mock, "cashier-token", "kasir1", "cashier", "outlet-1")
 
 	now := time.Now()
 	client := h.Hub.Register("outlet-1")
@@ -77,6 +82,7 @@ func TestSessionHandler_AddSession(t *testing.T) {
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodPost, "/api/sessions", bytes.NewReader([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer cashier-token")
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -106,6 +112,8 @@ func TestSessionHandler_DeleteSession(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
 
+	mockAuthSession(mock, "cashier-token", "kasir1", "cashier", "outlet-1")
+
 	now := time.Now()
 	// Mock lookup for outlet_id
 	mock.ExpectQuery(`SELECT id, outlet_id, queue_no, COALESCE\(nama, ''\), items, COALESCE\(start_time, 0\), COALESCE\(tanggal, ''\), COALESCE\(pay_awal, 'cash'\), created_at FROM active_sessions WHERE id = \$1`).
@@ -120,6 +128,7 @@ func TestSessionHandler_DeleteSession(t *testing.T) {
 
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodDelete, "/api/sessions/s-101", nil)
+	req.Header.Set("Authorization", "Bearer cashier-token")
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -137,6 +146,8 @@ func TestSessionHandler_ClaimSession(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
 
+	mockAuthSession(mock, "cashier-token", "kasir1", "cashier", "outlet-1")
+
 	now := time.Now()
 	client := h.Hub.Register("outlet-1")
 
@@ -152,9 +163,9 @@ func TestSessionHandler_ClaimSession(t *testing.T) {
 		WithArgs("s-200").
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
-	// MAX(no)
-	mock.ExpectQuery(`SELECT COALESCE\(MAX\(no\), 0\) \+ 1 FROM transactions`).
-		WillReturnRows(mock.NewRows([]string{"max"}).AddRow(10))
+	// Sequence or MAX(no)
+	mock.ExpectQuery(`SELECT nextval\('txn_no_seq'\)`).
+		WillReturnRows(mock.NewRows([]string{"nextval"}).AddRow(10))
 
 	// INSERT transaction
 	mock.ExpectQuery(`INSERT INTO transactions`).
@@ -197,6 +208,7 @@ func TestSessionHandler_ClaimSession(t *testing.T) {
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodPost, "/api/claim", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer cashier-token")
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)

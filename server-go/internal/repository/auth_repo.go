@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"golang.org/x/crypto/bcrypt"
 	"kasir-backend/internal/model"
 )
 
@@ -15,6 +16,18 @@ const (
 	DefaultLoginTokenTTLMs      int64 = 12 * 60 * 60 * 1000 // 12 hours
 	DefaultEscalationTokenTTLMs int64 = 10 * 60 * 1000      // 10 minutes
 )
+
+func HashPassword(password string) (string, error) {
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	return string(bytes), err
+}
+
+func CheckPasswordHash(stored, password string) bool {
+	if err := bcrypt.CompareHashAndPassword([]byte(stored), []byte(password)); err == nil {
+		return true
+	}
+	return stored == password
+}
 
 type AuthRepository struct {
 	db DBPool
@@ -40,7 +53,7 @@ func (r *AuthRepository) AuthenticateUser(ctx context.Context, username, passwor
 	if user.Password == "" {
 		return nil, errors.New("password not set, contact admin")
 	}
-	if user.Password != password {
+	if !CheckPasswordHash(user.Password, password) {
 		return nil, errors.New("invalid credentials")
 	}
 
@@ -110,6 +123,13 @@ func (r *AuthRepository) GetUsers(ctx context.Context, outletID string) ([]model
 }
 
 func (r *AuthRepository) SaveUser(ctx context.Context, user model.User) error {
+	password := user.Password
+	if password != "" && !strings.HasPrefix(password, "$2a$") && !strings.HasPrefix(password, "$2b$") && !strings.HasPrefix(password, "$2y$") {
+		if hashed, err := HashPassword(password); err == nil {
+			password = hashed
+		}
+	}
+
 	query := `
 		INSERT INTO users (username, password, role, outlet_id)
 		VALUES ($1, $2, $3, NULLIF($4, ''))
@@ -118,7 +138,7 @@ func (r *AuthRepository) SaveUser(ctx context.Context, user model.User) error {
 			role = EXCLUDED.role,
 			outlet_id = EXCLUDED.outlet_id
 	`
-	_, err := r.db.Exec(ctx, query, user.Username, user.Password, user.Role, user.OutletID)
+	_, err := r.db.Exec(ctx, query, user.Username, password, user.Role, user.OutletID)
 	if err != nil {
 		return fmt.Errorf("error saving user: %w", err)
 	}
@@ -224,11 +244,11 @@ func (r *AuthRepository) VerifyAdminPassword(ctx context.Context, password strin
 	err := r.db.QueryRow(ctx, query).Scan(&stored)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return password == "admin123", nil
+			return CheckPasswordHash("admin123", password), nil
 		}
 		return false, fmt.Errorf("error verifying admin password: %w", err)
 	}
-	return stored == password, nil
+	return CheckPasswordHash(stored, password), nil
 }
 
 func (r *AuthRepository) ChangeAdminPassword(ctx context.Context, oldPassword, newPassword string) error {
@@ -240,12 +260,17 @@ func (r *AuthRepository) ChangeAdminPassword(ctx context.Context, oldPassword, n
 		return errors.New("password lama salah")
 	}
 
+	hashed, err := HashPassword(newPassword)
+	if err != nil {
+		hashed = newPassword
+	}
+
 	query := `
 		INSERT INTO settings (key, outlet_id, value)
 		VALUES ('admin_pass', 'global', $1)
 		ON CONFLICT (key, outlet_id) DO UPDATE SET value = EXCLUDED.value
 	`
-	_, err = r.db.Exec(ctx, query, newPassword)
+	_, err = r.db.Exec(ctx, query, hashed)
 	if err != nil {
 		return fmt.Errorf("error updating admin password: %w", err)
 	}

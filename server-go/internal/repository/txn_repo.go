@@ -193,9 +193,12 @@ func (r *TxnRepository) ClaimSession(ctx context.Context, payload model.ClaimSes
 	}
 
 	var nextNo int
-	err = tx.QueryRow(ctx, `SELECT COALESCE(MAX(no), 0) + 1 FROM transactions`).Scan(&nextNo)
+	err = tx.QueryRow(ctx, `SELECT nextval('txn_no_seq')`).Scan(&nextNo)
 	if err != nil {
-		nextNo = 1
+		err = tx.QueryRow(ctx, `SELECT COALESCE(MAX(no), 0) + 1 FROM transactions`).Scan(&nextNo)
+		if err != nil {
+			nextNo = 1
+		}
 	}
 
 	insertQuery := `

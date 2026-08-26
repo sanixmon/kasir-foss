@@ -14,6 +14,10 @@ func (h *Handler) HandleStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clear write deadline so the connection doesn't drop after http.Server.WriteTimeout
+	rc := http.NewResponseController(w)
+	_ = rc.SetWriteDeadline(time.Time{})
+
 	outletID := r.URL.Query().Get("outlet_id")
 	if outletID == "" {
 		outletID = "all"

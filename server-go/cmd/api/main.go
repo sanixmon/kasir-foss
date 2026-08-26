@@ -53,7 +53,7 @@ func main() {
 		Addr:         addr,
 		Handler:      router,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 60 * time.Second,
+		WriteTimeout: 0, // Disabled to allow permanent SSE real-time streaming
 		IdleTimeout:  120 * time.Second,
 	}
 

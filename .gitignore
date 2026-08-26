@@ -35,3 +35,10 @@ data/
 test-results/
 playwright-report/
 artifacts/
+server-go/api
+server-go/bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib

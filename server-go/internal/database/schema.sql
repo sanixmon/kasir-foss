@@ -78,8 +78,11 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
     ttl_ms BIGINT
 );
 
+CREATE SEQUENCE IF NOT EXISTS txn_no_seq;
+
 CREATE INDEX IF NOT EXISTS idx_active_sessions_outlet ON active_sessions(outlet_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_outlet_tanggal ON transactions(outlet_id, tanggal);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_expires_at ON auth_tokens(expires_at);
 
 -- Default Outlets Seed
 INSERT INTO outlets (id, nama, alamat) VALUES 

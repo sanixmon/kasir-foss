@@ -153,6 +153,7 @@ func TestAuthHandler_UsersCRUD(t *testing.T) {
 
 	now := time.Now()
 	// 1. GetUsers
+	mockAuthSession(mock, "admin-token", "admin", "admin", "global")
 	mock.ExpectQuery(`SELECT id, username, password, role, COALESCE\(outlet_id, ''\), created_at FROM users WHERE outlet_id = \$1 OR outlet_id IS NULL ORDER BY username ASC`).
 		WithArgs("outlet-1").
 		WillReturnRows(mock.NewRows([]string{
@@ -161,6 +162,7 @@ func TestAuthHandler_UsersCRUD(t *testing.T) {
 
 	router := NewRouter(h)
 	getReq := httptest.NewRequest(http.MethodGet, "/api/users?outlet_id=outlet-1", nil)
+	getReq.Header.Set("Authorization", "Bearer admin-token")
 	getRR := httptest.NewRecorder()
 	router.ServeHTTP(getRR, getReq)
 
@@ -169,8 +171,9 @@ func TestAuthHandler_UsersCRUD(t *testing.T) {
 	}
 
 	// 2. SaveUser
+	mockAuthSession(mock, "admin-token", "admin", "admin", "global")
 	mock.ExpectExec(`INSERT INTO users \(username, password, role, outlet_id\)`).
-		WithArgs("kasir2", "newpass", "cashier", "outlet-1").
+		WithArgs("kasir2", pgxmock.AnyArg(), "cashier", "outlet-1").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	saveBody, _ := json.Marshal(model.User{
@@ -181,6 +184,7 @@ func TestAuthHandler_UsersCRUD(t *testing.T) {
 	})
 	saveReq := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(saveBody))
 	saveReq.Header.Set("Content-Type", "application/json")
+	saveReq.Header.Set("Authorization", "Bearer admin-token")
 	saveRR := httptest.NewRecorder()
 	router.ServeHTTP(saveRR, saveReq)
 
@@ -189,11 +193,13 @@ func TestAuthHandler_UsersCRUD(t *testing.T) {
 	}
 
 	// 3. DeleteUser
+	mockAuthSession(mock, "admin-token", "admin", "admin", "global")
 	mock.ExpectExec(`DELETE FROM users WHERE LOWER\(username\) = LOWER\(\$1\)`).
 		WithArgs("kasir2").
 		WillReturnResult(pgxmock.NewResult("DELETE", 1))
 
 	delReq := httptest.NewRequest(http.MethodDelete, "/api/users/kasir2", nil)
+	delReq.Header.Set("Authorization", "Bearer admin-token")
 	delRR := httptest.NewRecorder()
 	router.ServeHTTP(delRR, delReq)
 

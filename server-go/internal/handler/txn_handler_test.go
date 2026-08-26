@@ -16,6 +16,8 @@ func TestTxnHandler_GetTransactions(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
 
+	mockAuthSession(mock, "cashier-tok", "kasir1", "cashier", "outlet-1")
+
 	now := time.Now()
 	rows := mock.NewRows([]string{
 		"id", "outlet_id", "no", "queue_no", "nama", "tanggal",
@@ -35,6 +37,7 @@ func TestTxnHandler_GetTransactions(t *testing.T) {
 
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodGet, "/api/transactions?outlet_id=outlet-1&tanggal=2026-08-26", nil)
+	req.Header.Set("Authorization", "Bearer cashier-tok")
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -60,6 +63,7 @@ func TestTxnHandler_DeleteTxn_Single(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
 
+	mockAuthSession(mock, "admin-tok", "admin", "admin", "global")
 	client := h.Hub.Register("outlet-1")
 
 	now := time.Now()
@@ -84,6 +88,7 @@ func TestTxnHandler_DeleteTxn_Single(t *testing.T) {
 
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodDelete, "/api/transactions/t-123", nil)
+	req.Header.Set("Authorization", "Bearer admin-tok")
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -110,6 +115,7 @@ func TestTxnHandler_ClearAllTxns(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
 
+	mockAuthSession(mock, "admin-tok", "admin", "admin", "global")
 	client := h.Hub.Register("outlet-1")
 
 	mock.ExpectExec(`DELETE FROM transactions WHERE outlet_id = \$1`).
@@ -118,6 +124,7 @@ func TestTxnHandler_ClearAllTxns(t *testing.T) {
 
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodPost, "/api/transactions/clear-all?outlet_id=outlet-1", nil)
+	req.Header.Set("Authorization", "Bearer admin-tok")
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -144,7 +151,8 @@ func TestTxnHandler_DeletionLogs(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
 
-	// 1. Add deletion log
+	// 1. Add deletion log (Cashier auth)
+	mockAuthSession(mock, "cashier-tok", "kasir1", "cashier", "outlet-1")
 	mock.ExpectExec(`INSERT INTO deletion_logs`).
 		WithArgs("outlet-1", "t-1", 1, "Rian", "2026-08-26", float64(50000), int64(1700000000), "admin").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -163,6 +171,7 @@ func TestTxnHandler_DeletionLogs(t *testing.T) {
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodPost, "/api/deletion-logs", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer cashier-tok")
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
@@ -171,7 +180,8 @@ func TestTxnHandler_DeletionLogs(t *testing.T) {
 		t.Fatalf("expected status 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	// 2. Get deletion logs
+	// 2. Get deletion logs (Cashier auth)
+	mockAuthSession(mock, "cashier-tok", "kasir1", "cashier", "outlet-1")
 	mock.ExpectQuery(`SELECT id, COALESCE\(outlet_id, ''\), COALESCE\(txn_id, ''\), COALESCE\(txn_no, 0\), COALESCE\(txn_nama, ''\), COALESCE\(txn_tanggal, ''\), COALESCE\(txn_total_all, 0\), COALESCE\(deleted_at, 0\), COALESCE\(deleted_by, 'admin'\) FROM deletion_logs WHERE outlet_id = \$1 ORDER BY deleted_at DESC LIMIT \$2`).
 		WithArgs("outlet-1", 200).
 		WillReturnRows(mock.NewRows([]string{
@@ -179,6 +189,7 @@ func TestTxnHandler_DeletionLogs(t *testing.T) {
 		}).AddRow(1, "outlet-1", "t-1", 1, "Rian", "2026-08-26", float64(50000), int64(1700000000), "admin"))
 
 	getReq := httptest.NewRequest(http.MethodGet, "/api/deletion-logs?outlet_id=outlet-1", nil)
+	getReq.Header.Set("Authorization", "Bearer cashier-tok")
 	getRR := httptest.NewRecorder()
 
 	router.ServeHTTP(getRR, getReq)

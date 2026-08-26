@@ -201,7 +201,7 @@ func TestAuthRepository_VerifyAndChangeAdminPassword(t *testing.T) {
 
 	// ChangeAdminPassword -> update
 	mock.ExpectExec(`INSERT INTO settings \(key, outlet_id, value\)`).
-		WithArgs("newpass456").
+		WithArgs(pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	repo := NewAuthRepository(mock)

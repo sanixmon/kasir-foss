@@ -37,6 +37,18 @@ func setupTestHandler(t *testing.T) (*Handler, pgxmock.PgxPoolIface) {
 	return h, mock
 }
 
+func mockAuthSession(mock pgxmock.PgxPoolIface, token, username, role, outletID string) {
+	futureExp := time.Now().UnixMilli() + 3600000
+	rows := mock.NewRows([]string{"token", "username", "role", "outlet_id", "expires_at", "ttl_ms"}).
+		AddRow(token, username, role, outletID, futureExp, int64(3600000))
+	mock.ExpectQuery(`SELECT token, username, role, COALESCE\(outlet_id, ''\), expires_at, COALESCE\(ttl_ms, 0\) FROM auth_tokens WHERE token = \$1`).
+		WithArgs(token).
+		WillReturnRows(rows)
+	mock.ExpectExec(`UPDATE auth_tokens SET expires_at = \$1 WHERE token = \$2`).
+		WithArgs(pgxmock.AnyArg(), token).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+}
+
 func TestOutletHandler_GetOutlets(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
@@ -79,6 +91,8 @@ func TestOutletHandler_CreateOutlet(t *testing.T) {
 	h, mock := setupTestHandler(t)
 	defer mock.Close()
 
+	mockAuthSession(mock, "admin-tok", "admin", "admin", "global")
+
 	mock.ExpectExec(`INSERT INTO outlets \(id, nama, alamat\)`).
 		WithArgs("outlet-3", "Outlet Baru", "Jl. Baru").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
@@ -92,6 +106,7 @@ func TestOutletHandler_CreateOutlet(t *testing.T) {
 	router := NewRouter(h)
 	req := httptest.NewRequest(http.MethodPost, "/api/outlets", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer admin-tok")
 	rr := httptest.NewRecorder()
 
 	router.ServeHTTP(rr, req)
