@@ -2,9 +2,11 @@ package handler
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/time/rate"
 )
 
 func CorsMiddleware(origin string) func(http.Handler) http.Handler {
@@ -37,9 +39,15 @@ func CorsMiddleware(origin string) func(http.Handler) http.Handler {
 func NewRouter(h *Handler) http.Handler {
 	r := chi.NewRouter()
 
+	// IP Rate Limiters
+	generalLimiter := NewIPRateLimiter(rate.Limit(100), 200, 5*time.Minute)
+	authLimiter := NewIPRateLimiter(rate.Limit(5), 10, 5*time.Minute)
+	claimLimiter := NewIPRateLimiter(rate.Limit(20), 30, 5*time.Minute)
+
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(StructuredLoggerMiddleware)
+	r.Use(generalLimiter.Middleware)
 	r.Use(middleware.Recoverer)
 	r.Use(CorsMiddleware(h.Config.CorsOrigin))
 
@@ -56,10 +64,10 @@ func NewRouter(h *Handler) http.Handler {
 
 	// API Routes
 	r.Route("/api", func(api chi.Router) {
-		// Public Auth Endpoints
-		api.Post("/login/cashier", h.LoginCashier)
-		api.Post("/login/admin", h.LoginAdmin)
-		api.Post("/verify-admin", h.VerifyAdmin)
+		// Public Auth Endpoints (Protected by Auth Rate Limiter)
+		api.With(authLimiter.Middleware).Post("/login/cashier", h.LoginCashier)
+		api.With(authLimiter.Middleware).Post("/login/admin", h.LoginAdmin)
+		api.With(authLimiter.Middleware).Post("/verify-admin", h.VerifyAdmin)
 
 		// Public Tracking & Outlets Query
 		api.Get("/track/{id}", h.TrackSession)
@@ -83,8 +91,8 @@ func NewRouter(h *Handler) http.Handler {
 			auth.Get("/sessions/{id}", h.GetSessionByID)
 			auth.Put("/sessions/{id}", h.EditSession)
 			auth.Delete("/sessions/{id}", h.DeleteSession)
-			auth.Post("/claim", h.ClaimSession)
-			auth.Post("/claim-session", h.ClaimSession)
+			auth.With(claimLimiter.Middleware).Post("/claim", h.ClaimSession)
+			auth.With(claimLimiter.Middleware).Post("/claim-session", h.ClaimSession)
 
 			// Transactions & Logs
 			auth.Get("/transactions", h.GetTransactions)
@@ -111,7 +119,7 @@ func NewRouter(h *Handler) http.Handler {
 
 			// Settings & Passwords
 			admin.Post("/settings", h.SaveSetting)
-			admin.Post("/change-admin-pass", h.ChangeAdminPassword)
+			admin.With(authLimiter.Middleware).Post("/change-admin-pass", h.ChangeAdminPassword)
 
 			// User Management
 			admin.Get("/users", h.GetUsers)

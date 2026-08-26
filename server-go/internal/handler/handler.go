@@ -74,6 +74,9 @@ func (h *Handler) extractBearerToken(r *http.Request) string {
 	if tokenQuery := r.URL.Query().Get("token"); tokenQuery != "" {
 		return strings.TrimSpace(tokenQuery)
 	}
+	if cookie, err := r.Cookie("auth_token"); err == nil && cookie.Value != "" {
+		return strings.TrimSpace(cookie.Value)
+	}
 	return ""
 }
 

@@ -3,10 +3,14 @@ package config
 import "os"
 
 type Config struct {
-	Port        string
-	DatabaseURL string
-	AdminPass   string
-	CorsOrigin  string
+	Port           string
+	DatabaseURL    string
+	AdminPass      string
+	CorsOrigin     string
+	TLSCertFile    string
+	TLSKeyFile     string
+	CookieSecure   bool
+	CookieSameSite string
 }
 
 func Load() *Config {
@@ -26,10 +30,19 @@ func Load() *Config {
 	if corsOrigin == "" {
 		corsOrigin = "*"
 	}
+	tlsCert := os.Getenv("TLS_CERT_FILE")
+	tlsKey := os.Getenv("TLS_KEY_FILE")
+
+	cookieSecure := os.Getenv("COOKIE_SECURE") == "true" || tlsCert != ""
+
 	return &Config{
-		Port:        port,
-		DatabaseURL: dbURL,
-		AdminPass:   adminPass,
-		CorsOrigin:  corsOrigin,
+		Port:           port,
+		DatabaseURL:    dbURL,
+		AdminPass:      adminPass,
+		CorsOrigin:     corsOrigin,
+		TLSCertFile:    tlsCert,
+		TLSKeyFile:     tlsKey,
+		CookieSecure:   cookieSecure,
+		CookieSameSite: "Lax",
 	}
 }

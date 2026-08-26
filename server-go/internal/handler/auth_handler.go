@@ -69,6 +69,8 @@ func (h *Handler) LoginCashier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setAuthCookie(w, tok.Token, repository.DefaultLoginTokenTTLMs)
+
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"user": map[string]any{
@@ -114,6 +116,8 @@ func (h *Handler) LoginAdmin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.setAuthCookie(w, tok.Token, repository.DefaultLoginTokenTTLMs)
+
 	h.writeJSON(w, http.StatusOK, map[string]any{
 		"success": true,
 		"user": map[string]any{
@@ -121,6 +125,25 @@ func (h *Handler) LoginAdmin(w http.ResponseWriter, r *http.Request) {
 			"role":     "admin",
 		},
 		"token": tok.Token,
+	})
+}
+
+func (h *Handler) setAuthCookie(w http.ResponseWriter, token string, ttlMs int64) {
+	if ttlMs <= 0 {
+		ttlMs = repository.DefaultLoginTokenTTLMs
+	}
+	cookieSecure := false
+	if h.Config != nil {
+		cookieSecure = h.Config.CookieSecure
+	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "auth_token",
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   cookieSecure,
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   int(ttlMs / 1000),
 	})
 }
 

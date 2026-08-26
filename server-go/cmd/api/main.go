@@ -62,9 +62,16 @@ func main() {
 	// Server startup in background goroutine
 	serverErr := make(chan error, 1)
 	go func() {
-		slog.Info("Kasir Backend server running", "port", cfg.Port, "addr", "http://0.0.0.0:"+cfg.Port)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			serverErr <- err
+		if cfg.TLSCertFile != "" && cfg.TLSKeyFile != "" {
+			slog.Info("Kasir Backend HTTPS server running with TLS", "port", cfg.Port, "cert", cfg.TLSCertFile)
+			if err := srv.ListenAndServeTLS(cfg.TLSCertFile, cfg.TLSKeyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serverErr <- err
+			}
+		} else {
+			slog.Info("Kasir Backend HTTP server running", "port", cfg.Port, "addr", "http://0.0.0.0:"+cfg.Port)
+			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				serverErr <- err
+			}
 		}
 	}()
 
