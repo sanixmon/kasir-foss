@@ -93,5 +93,10 @@ ON CONFLICT (id) DO NOTHING;
 -- Default Settings Seed
 INSERT INTO settings (key, outlet_id, value) VALUES
     ('admin_pass', 'global', 'admin123'),
-    ('hourly_rate', 'global', '10000')
+    ('app_name', 'global', 'Kasir Rental')
 ON CONFLICT (key, outlet_id) DO NOTHING;
+
+-- Default Users Seed
+INSERT INTO users (username, password, role, outlet_id) VALUES
+    ('cashier1', 'cashier123', 'cashier', 'outlet-1')
+ON CONFLICT (username) DO NOTHING;

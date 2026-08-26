@@ -108,16 +108,19 @@ func main() {
 				if isClaimEndpoint {
 					// Prepare realistic transactional checkout payload
 					claimPayload := map[string]any{
-						"outletId": *outletID,
-						"nama":     fmt.Sprintf("LoadUser-%d", workerID),
-						"items": []map[string]any{
-							{
-								"nama":  "Rental PS5 1 Jam",
-								"qty":   1,
-								"harga": 25000,
-							},
-						},
-						"bayar": 25000,
+						"outletId":   *outletID,
+						"nama":       fmt.Sprintf("LoadUser-%d", workerID),
+						"tanggal":    time.Now().Format("2006-01-02"),
+						"startTime":  time.Now().UnixMilli() - 3600000,
+						"endTime":    time.Now().UnixMilli(),
+						"items":      `[{"nama":"Rental PS5 1 Jam","qty":1,"harga":25000}]`,
+						"totalBase":  25000.0,
+						"grandTotal": 25000.0,
+						"totalAll":   25000.0,
+						"payAwal":    "cash",
+						"cash":       25000.0,
+						"qris":       0.0,
+						"shift":      "siang",
 					}
 					payloadBytes, _ := json.Marshal(claimPayload)
 					req, reqErr = http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(payloadBytes))

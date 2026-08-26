@@ -26,10 +26,10 @@ mkdir -p "${BACKUP_DIR}"
 
 # 1. Execute pg_dump and compress on-the-fly
 if command -v pg_dump >/dev/null 2>&1; then
-    pg_dump -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${POSTGRES_DB}" | gzip -9 > "${BACKUP_FILE}"
+    pg_dump --clean --if-exists -h "${POSTGRES_HOST}" -p "${POSTGRES_PORT}" -U "${POSTGRES_USER}" "${POSTGRES_DB}" | gzip -9 > "${BACKUP_FILE}"
 elif command -v docker >/dev/null 2>&1 && docker ps --format '{{.Names}}' | grep -q 'kasir-postgres'; then
     echo "Running pg_dump inside Docker container 'kasir-postgres'..."
-    docker exec kasir-postgres pg_dump -U "${POSTGRES_USER}" "${POSTGRES_DB}" | gzip -9 > "${BACKUP_FILE}"
+    docker exec kasir-postgres pg_dump --clean --if-exists -U "${POSTGRES_USER}" "${POSTGRES_DB}" | gzip -9 > "${BACKUP_FILE}"
 else
     echo "ERROR: Neither local pg_dump nor running 'kasir-postgres' docker container found."
     exit 1
