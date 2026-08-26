@@ -1,0 +1,16 @@
+node_modules
+dist
+dist.bak*
+.git
+.agents
+.codegraph
+.superpowers
+graphify-out
+artifacts
+playwright-report
+test-results
+tests
+server-go
+*.log
+.env
+.env.*
