@@ -101,12 +101,8 @@ function SettingsTab({
         <div className="col-12 col-xl-6">
           <div className="panel h-100">
             <div className="panel-head">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" style={{ marginRight: '8px' }}>
-                <path d="M3.89 15.672L6.255.461A.542.542 0 017.27.288l2.543 4.771 2.39-4.52a.542.542 0 01.96 0L22.073 22H3.89z" fill="#FFA000"/>
-                <path d="M17.656 18.281L13.84 3.326a.545.545 0 00-1.05-.021L9.274 10.52 17.656 18.281z" fill="#F57F17"/>
-                <path d="M3.89 15.672l.924-8.684 4.46 12.992zM22.073 22l-4.417-3.719L13.83 22z" fill="#FFCA28"/>
-              </svg>
-              <span>Koneksi Google Sheets Cloud API</span>
+              <i className="bi bi-hdd-network-fill me-2" style={{ color: 'var(--primary)', fontSize: '1.1rem' }}></i>
+              <span>Koneksi Real-time Engine (Go + PostgreSQL)</span>
               <span className="ms-auto">
                 {sbConnected ? (
                   <span className="fb-badge fb-badge-connected" style={{ color: 'var(--green)', fontSize: '0.85rem' }}>
