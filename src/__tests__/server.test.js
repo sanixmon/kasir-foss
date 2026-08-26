@@ -304,4 +304,48 @@ describe('SQLite Backend Server Logic (TDD)', () => {
     const fetchedAfter = handleAction('fetch_data');
     expect(fetchedAfter.transactions).toHaveLength(0);
   });
+
+  it('claim_session enforces atomic invariant and rejects concurrent double-claim', () => {
+    // Setup 1 active session
+    const addRes = handleAction('add_session', {
+      id: 's-race-01',
+      queueNo: 7,
+      nama: 'Race Condition Test',
+      tanggal: '2026-08-25',
+      items: [{ code: 'SA', qty: 1 }],
+      startTime: 1700000000000
+    });
+    expect(addRes.success).toBe(true);
+
+    const claimPayload = {
+      sessionId: 's-race-01',
+      queueNo: 7,
+      nama: 'Race Condition Test',
+      tanggal: '2026-08-25',
+      startTime: 1700000000000,
+      endTime: 1700003600000,
+      items: 'SA x1',
+      totalBase: 50000,
+      grandTotal: 50000,
+      totalAll: 50000,
+      remainingItems: []
+    };
+
+    // Simulasi Kasir A mengklaim sesi
+    const kasirARes = handleAction('claim_session', claimPayload);
+    expect(kasirARes.success).toBe(true);
+    expect(kasirARes.transaction).toBeDefined();
+
+    // Simulasi Kasir B mencoba mengklaim sesi yang sama
+    const kasirBRes = handleAction('claim_session', claimPayload);
+    expect(kasirBRes.success).toBe(false);
+    expect(kasirBRes.error).toMatch(/Session not found or already claimed/i);
+
+    // Verifikasi state database akhir: persis 0 active session dan persis 1 transaction
+    const finalData = handleAction('fetch_data');
+    expect(finalData.sessions).toHaveLength(0);
+    expect(finalData.transactions).toHaveLength(1);
+    expect(finalData.transactions[0].id).toBe(kasirARes.transaction.id);
+  });
 });
+

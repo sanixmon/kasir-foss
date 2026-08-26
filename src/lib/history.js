@@ -1,10 +1,11 @@
+import { getShiftDate } from './shift';
+
 function getShiftDateStr(val) {
   if (!val) return '';
   if (typeof val === 'string' && val.length >= 10 && val.indexOf('-') === 4) return val.slice(0, 10);
-  const d = new Date(Number(val));
-  if (isNaN(d.getTime())) return '';
-  d.setHours(d.getHours() - 6);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const num = Number(val);
+  if (isNaN(num) || num <= 0) return '';
+  return getShiftDate(num);
 }
 
 export function aggregateHistory(transactions, mode, value, sortOrder = 'desc') {

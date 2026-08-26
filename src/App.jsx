@@ -1,24 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import LoginPage from './components/LoginPage';
-import { fetchAllData, addSession, editSession, claimSession, deleteSession, deleteTxn, clearAllTxns, saveSetting, verifyAdminPassword, changeAdminPassword, addDeletionLog, getDeletionLogs, loginAdmin, setAuthToken, setEscalationToken, clearEscalationToken } from './api';
-import { swalSuccess, swalError, swalWarning, swalConfirm } from './lib/swal';
-import { checkShiftExpiration, getShiftDate } from './lib/shift';
+import LoginPage from './features/auth/components/LoginPage';
+import { changeAdminPassword } from './api';
+import { getShiftDate } from './lib/shift';
 import { fmtRp, fmtDur, generateShortId, safeSetItem, normalizeItems, normalizeSession, normalizeTxn } from './lib/utils';
 import { ITEMS } from './lib/items';
 import DashboardTab from './components/DashboardTab';
-import HistoryTab from './components/HistoryTab';
-import DeletionLogTab from './components/DeletionLogTab';
+import HistoryTab from './features/transactions/components/HistoryTab';
+import DeletionLogTab from './features/transactions/components/DeletionLogTab';
 import SettingsTab from './components/SettingsTab';
 import FooterNav from './components/FooterNav';
-import RoleSelection from './components/RoleSelection';
+import RoleSelection from './features/auth/components/RoleSelection';
 
-import CalculateRentalModal from './components/CalculateRentalModal';
+import CalculateRentalModal from './features/rentals/components/CalculateRentalModal';
 import PaymentModal from './components/PaymentModal';
-import PasswordVerificationModal from './components/PasswordVerificationModal';
+import PasswordVerificationModal from './features/auth/components/PasswordVerificationModal';
 import QRCodeModal from './components/QRCodeModal';
-import EditActiveSessionModal from './components/EditActiveSessionModal';
+import EditActiveSessionModal from './features/rentals/components/EditActiveSessionModal';
 import TrackingPage from './components/TrackingPage';
 import LiveClock from './components/LiveClock';
+import { useReceiptPrinter } from './features/receipts/useReceiptPrinter';
+import { usePOSData } from './features/pos/hooks/usePOSData';
+import { useRentalActions } from './features/rentals/hooks/useRentalActions';
+import { useTransactionActions } from './features/transactions/hooks/useTransactionActions';
+import { useAuthSession } from './features/auth/hooks/useAuthSession';
+import { useAdminEscalation } from './features/auth/hooks/useAdminEscalation';
 
 // Re-export agar komponen yang masih import dari '../App' tetap berfungsi
 export { ITEMS, fmtRp, fmtDur, generateShortId, safeSetItem, normalizeItems, normalizeSession, normalizeTxn };
@@ -26,51 +31,42 @@ export { ITEMS, fmtRp, fmtDur, generateShortId, safeSetItem, normalizeItems, nor
 // No localStorage data caching — SQLite server is source of truth
 
 function App() {
-  const [activeSessions, setActiveSessions] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [deletionLogs, setDeletionLogs] = useState([]);
   const [shiftQueueNo, setShiftQueueNo] = useState(0);
-  const [currentShiftUser, setCurrentShiftUser] = useState(() => {
-    try {
-      const savedUser = localStorage.getItem('kw_currentUser');
-      if (!savedUser) return null;
-      const shiftDate = localStorage.getItem('kw_shiftDate');
-      const currentShiftDate = getShiftDate();
-      if (shiftDate && checkShiftExpiration(shiftDate, currentShiftDate)) {
-        return null;
-      }
-      return savedUser;
-    } catch {
-      return null;
-    }
+
+  const {
+    isAuthenticated,
+    currentUserRole,
+    currentShiftUser,
+    setCurrentUserRole,
+    handleLogin,
+    selectCashierRole,
+    selectAdminRole,
+    resetRole,
+    handleLogout,
+    clearSessionState,
+    doLogout,
+    showLogoutConfirm,
+    setShowLogoutConfirm,
+    logoutConfirmName,
+    setLogoutConfirmName
+  } = useAuthSession({
+    onSessionCleared: () => setShiftQueueNo(0)
   });
 
-  const [currentUserRole, setCurrentUserRole] = useState(() => {
-    try {
-      const savedUser = localStorage.getItem('kw_currentUser');
-      const savedRole = localStorage.getItem('kw_userRole');
-      const shiftDate = localStorage.getItem('kw_shiftDate');
-      const currentShiftDate = getShiftDate();
-      if (savedRole === 'cashier' && savedUser && shiftDate && checkShiftExpiration(shiftDate, currentShiftDate)) {
-        return null;
-      }
-      if (savedRole === 'cashier' && !savedUser) {
-        return null;
-      }
-      return savedRole || null;
-    } catch {
-      return null;
-    }
-  });
+  const {
+    pendingAction,
+    setPendingAction,
+    requestEscalation,
+    cancelEscalation,
+    verifyAndEscalate,
+    executePendingAction
+  } = useAdminEscalation();
 
   const [activeTab, setActiveTab] = useState('dashboard');
 
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('kw_theme') || 'dark';
   });
-  const [apiConnected, setApiConnected] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isTrackingMode, setIsTrackingMode] = useState(false);
   const [trackingId, setTrackingId] = useState('');
 
@@ -79,104 +75,31 @@ function App() {
   const [activePaymentData, setActivePaymentData] = useState(null);
   const [activeQRModalSession, setActiveQRModalSession] = useState(null);
   const [activeEditSession, setActiveEditSession] = useState(null);
-  const [pendingAction, setPendingAction] = useState(null);
-  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
-  const [logoutConfirmName, setLogoutConfirmName] = useState('');
 
   // Settings states
   const [printMulai, setPrintMulai] = useState(false);
   const [printSelesai, setPrintSelesai] = useState(false);
-  const [lastSyncTime, setLastSyncTime] = useState('');
   const [imageUpdateTrigger, setImageUpdateTrigger] = useState(0);
 
   const todayStr = (ts) => getShiftDate(ts);
 
-  // Authenticated = completed login (admin, or cashier with a shift user).
-  // Until then we must NOT poll, otherwise the 5s unauthenticated request
-  // fires mid-login and resets the role selection back to the portal buttons.
-  const isAuthenticated = currentUserRole === 'admin' || (currentUserRole === 'cashier' && !!currentShiftUser);
-
-  const handleLogin = (user) => {
-    const cName = user.charAt(0).toUpperCase() + user.slice(1);
-    setCurrentShiftUser(cName);
-    localStorage.setItem('kw_currentUser', cName);
-    
-    const shiftDate = getShiftDate();
-    localStorage.setItem('kw_shiftDate', shiftDate);
-  };
-
-  const handleLogout = () => {
-    setLogoutConfirmName('');
-    setShowLogoutConfirm(true);
-  };
-
-  const clearSessionState = () => {
-    setAuthToken(null);
-    clearEscalationToken();
-    localStorage.removeItem('kw_currentUser');
-    localStorage.removeItem('kw_shiftQNo');
-    localStorage.removeItem('kw_userRole');
-    setShiftQueueNo(0);
-    setCurrentShiftUser(null);
-    setCurrentUserRole(null);
-  };
-
-  const doLogout = () => {
-    if (logoutConfirmName.trim().toLowerCase() !== (currentShiftUser || '').toLowerCase()) {
-      return;
-    }
-    clearSessionState();
-    setShowLogoutConfirm(false);
-  };
-
-
-
-  const loadData = async () => {
-    try {
-      setIsSyncing(true);
-
-      // Reset nomor antrian lokal saat berganti shift/hari
-      const currentShiftDate = getShiftDate();
-      const storedShiftDate = localStorage.getItem('kw_shiftDate');
-      if (storedShiftDate !== currentShiftDate) {
-        localStorage.setItem('kw_shiftDate', currentShiftDate);
-        localStorage.removeItem('kw_shiftQNo');
-        setShiftQueueNo(0);
-      }
-
-      const data = await fetchAllData();
-      if (data && !data.error) {
-        const sessions = Array.isArray(data.sessions)
-          ? data.sessions.map(normalizeSession).filter(Boolean)
-          : [];
-        const txns = Array.isArray(data.transactions)
-          ? data.transactions.map(normalizeTxn).filter(Boolean).sort((a, b) => (a.no || 0) - (b.no || 0))
-          : [];
-
-        setActiveSessions(sessions);
-        setTransactions(txns);
-
-        if (Array.isArray(data.users)) {
-          setUsers(data.users);
-        }
-
-        setApiConnected(true);
-        setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
-      }
-    } catch (err) {
-      if (err?.status === 401 || err?.code === 'UNAUTHORIZED') {
-        // Token missing/expired → force a single clean re-login instead of
-        // silently showing empty/offline data. Polling is gated on
-        // isAuthenticated, so a 401 here means a real (expired/invalid) session.
-        clearSessionState();
-        return;
-      }
-      console.error('API polling error:', err);
-      setApiConnected(false);
-    } finally {
-      setIsSyncing(false);
-    }
-  };
+  const {
+    activeSessions,
+    setActiveSessions,
+    transactions,
+    setTransactions,
+    users,
+    deletionLogs,
+    setDeletionLogs,
+    apiConnected,
+    isSyncing,
+    lastSyncTime,
+    loadData
+  } = usePOSData({
+    isAuthenticated,
+    onUnauthorized: clearSessionState,
+    onShiftDateChange: () => setShiftQueueNo(0)
+  });
 
   useEffect(() => {
     // Load preferences and session state from localStorage (by design)
@@ -207,152 +130,32 @@ function App() {
     };
   }, []);
 
-  // Poll the server only once authenticated — never while on the login screens.
-  useEffect(() => {
-    if (!isAuthenticated) return;
-    loadData();
-    const interval = setInterval(loadData, 5000);
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
 
 
+  const { printStart: handlePrintMulai, printFinish: handlePrintSelesai } = useReceiptPrinter({
+    currentShiftUser
+  });
 
-  const triggerPrintReceipt = (html, qrText) => {
-    const area = document.getElementById('printArea');
-    if (!area) return;
-    area.innerHTML = html;
-    area.style.display = 'block';
-
-    setTimeout(() => {
-      const qrEl = area.querySelector('#printQrCode');
-      if (qrEl && qrText && typeof window.QRCode !== 'undefined') {
-        new window.QRCode(qrEl, { text: qrText, width: 120, height: 120, colorDark: '#000000', colorLight: '#ffffff', correctLevel: window.QRCode.CorrectLevel.M });
-      }
-      setTimeout(() => {
-        window.print();
-        setTimeout(() => {
-          area.style.display = 'none';
-        }, 100);
-      }, 500);
-    }, 100);
-  };
-
-  const handlePrintMulai = (session) => {
-    const itemsText = session.items.map(i => { 
-      const d = ITEMS.find(item => item.code === i.code); 
-      if (!d) return `${i.code} x${i.qty}`;
-      return `${i.code} - ${d.name} x${i.qty}  ${fmtRp(d.priceHour * i.qty)}`; 
-    }).join('\n');
-
-    const total = session.items.reduce((s, i) => {
-      const d = ITEMS.find(item => item.code === i.code);
-      return s + (d ? d.priceHour * i.qty : 0);
-    }, 0);
-
-    const trackUrl = window.location.href.split('#')[0] + '#track/' + session.id;
-
-    const dateStr = ts => { 
-      const d = new Date(ts); 
-      return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`; 
-    };
-    const timeStr = ts => new Date(ts).toTimeString().slice(0,5);
-
-    const html = `
-      <div class="receipt-mono">
-        <div class="rc rb" style="font-size:13px">EVREN HOUSE</div>
-        <div class="rc">Scooter &amp; Stroller</div>
-        <div class="rc">Struk Mulai Sewa</div>
-        <hr>
-        <div>Queue Number: ${session.queueNo || 0}</div>
-        <div>Tgl: ${dateStr(session.startTime)} | ${timeStr(session.startTime)}</div>
-        <div>Nama: ${session.nama}</div>
-        <div>Shift: ${currentShiftUser || '-'}</div>
-        <hr>
-        <pre style="font-size:11px;margin:0">${itemsText}</pre>
-        <hr>
-        <div class="rr rb"><span>Total Pokok:</span><span>${fmtRp(total)}</span></div>
-        <hr>
-        <div class="rc" style="margin:5px 0">
-          <div id="printQrCode" style="display:inline-block;background:#fff;padding:5px"></div>
-          <div style="font-size:9px;margin-top:4px">Scan QR untuk Cek Sisa Waktu</div>
-        </div>
-        <hr>
-        <div class="rc" style="font-size:10px">Terima kasih!</div>
-      </div>`;
-
-    triggerPrintReceipt(html, trackUrl);
-  };
-
-  const handlePrintSelesai = (txn) => {
-    const trackUrl = window.location.href.split('#')[0] + '#track/' + txn.id;
-    const durSec = Math.floor((txn.endTime - txn.startTime) / 1000);
-
-    const dateStr = ts => { 
-      const d = new Date(ts); 
-      return `${d.getDate()}/${d.getMonth()+1}/${d.getFullYear()}`; 
-    };
-    const timeStr = ts => new Date(ts).toTimeString().slice(0,5);
-
-    const html = `
-      <div class="receipt-mono">
-        <div class="rc rb" style="font-size:13px">EVREN HOUSE</div>
-        <div class="rc">Scooter &amp; Stroller</div>
-        <div class="rc">Struk Selesai Sewa</div>
-        <hr>
-        <div>Queue Number: ${txn.queueNo || 0}</div>
-        <div>No: ${txn.no} | ${dateStr(txn.endTime)}</div>
-        <div>Nama: ${txn.nama}</div>
-        <div>Shift: ${txn.shift || '-'}</div>
-        <div style="font-size:11px">Mulai: ${timeStr(txn.startTime)} | Selesai: ${timeStr(txn.endTime)}</div>
-        <div style="font-size:11px">Durasi: ${fmtDur(durSec)}</div>
-        <hr>
-        <div style="font-size:11px">Item: ${txn.items}</div>
-        ${txn.ot !== '-' ? `<div style="font-size:11px">OT: ${txn.ot}</div>` : ''}
-        <hr>
-        <div class="rr"><span>Sewa Pokok:</span><span>${fmtRp(txn.totalBase)} (${txn.payAwal.toUpperCase()})</span></div>
-        ${txn.totalOT > 0 ? `<div class="rr"><span>Overtime:</span><span>${fmtRp(txn.totalOT)}</span></div>` : ''}
-        <hr>
-        <div class="rr rb"><span>TOTAL:</span><span>${fmtRp(txn.totalAll)}</span></div>
-        ${txn.cash > 0 ? `<div class="rr"><span>Cash:</span><span>${fmtRp(txn.cash)}</span></div>` : ''}
-        ${txn.qris > 0 ? `<div class="rr"><span>QRIS:</span><span>${fmtRp(txn.qris)}</span></div>` : ''}
-        <hr>
-        <div class="rc" style="margin:5px 0">
-          <div id="printQrCode" style="display:inline-block;background:#fff;padding:5px"></div>
-          <div style="font-size:9px;margin-top:4px">Scan QR untuk Struk Digital</div>
-        </div>
-        <hr>
-        <div class="rc" style="font-size:10px">Terima kasih telah berkunjung!</div>
-      </div>`;
-
-    triggerPrintReceipt(html, trackUrl);
-  };
-
-  const handleStartSewa = async (nama, items, payAwal) => {
-    const sessionData = {
-      id: generateShortId('s'),
-      nama,
-      items,
-      startTime: Date.now(),
-      tanggal: todayStr(),
-      payAwal
-    };
-
-    try {
-      const res = await addSession(sessionData);
-      if (res && res.session) {
-        const newSess = normalizeSession(res.session);
-        setShiftQueueNo(Number(newSess.queueNo) || 0);
-        localStorage.setItem('kw_shiftQNo', String(newSess.queueNo || 0));
-        setActiveSessions(prev => [...prev.filter(s => s.id !== newSess.id), newSess]);
-        if (printMulai) handlePrintMulai(newSess);
-      } else {
-        throw new Error(res?.error || 'Gagal menyimpan sesi ke server');
-      }
-    } catch (e) {
-      console.error('Failed to start session:', e);
-      swalError('Gagal Memulai Sesi', 'Periksa koneksi ke server.');
+  const {
+    startRental: handleStartSewa,
+    editRental: handleSaveEditedSessionAction,
+    claimRental: handleClaimRentalAction
+  } = useRentalActions({
+    setActiveSessions,
+    setTransactions,
+    currentShiftUser,
+    todayStr,
+    onSessionStarted: (newSess) => {
+      setShiftQueueNo(Number(newSess.queueNo) || 0);
+      if (printMulai) handlePrintMulai(newSess);
+    },
+    onEditSaved: () => {
+      setActiveEditSession(null);
+    },
+    onPaymentFinalized: (newTxn) => {
+      if (printSelesai) handlePrintSelesai(newTxn);
     }
-  };
+  });
 
   if (isTrackingMode) {
     return <TrackingPage trackingId={trackingId} />;
@@ -363,141 +166,33 @@ function App() {
     return localStorage.getItem('kw_img_' + code);
   };
 
-  const handleDeleteTxn = async (txn) => {
-    const txnObj = typeof txn === 'object' ? txn : { id: txn };
-    const ok = await swalConfirm(
-      'Hapus Riwayat Transaksi?',
-      `Bill atas nama "${txnObj.nama || '-'}" akan dihapus secara permanen.`,
-      'Ya, Hapus!'
-    );
-    if (ok) {
-      // Catat log penghapusan sebelum dihapus
-      const logEntry = {
-        txnId: txnObj.id || null,
-        txnNo: txnObj.no || null,
-        txnNama: txnObj.nama || '',
-        txnTanggal: txnObj.tanggal || '',
-        txnTotalAll: txnObj.totalAll || 0,
-        deletedAt: Date.now(),
-        deletedBy: currentShiftUser || 'admin'
-      };
-      // Optimistic UI update
-      setTransactions(prev => prev.filter(t => t.id !== txnObj.id && String(t.no) !== String(txnObj.no)));
-      setDeletionLogs(prev => [{ ...logEntry, id: Date.now() }, ...prev]);
-      try {
-        await deleteTxn({ id: txnObj.id, no: txnObj.no });
-        await addDeletionLog(logEntry);
-      } catch (e) {
-        console.error('Failed to delete transaction on server:', e);
-        // Rollback on error
-        await loadData();
-      } finally {
-        clearEscalationToken();
-      }
-    }
-  };
-
-  const handleClearHistory = async () => {
-    if (transactions.length === 0) {
-      swalWarning('Riwayat Kosong', 'Tidak ada riwayat transaksi untuk dibersihkan.');
-      return;
-    }
-    const ok = await swalConfirm(
-      'Bersihkan Semua Riwayat?',
-      'Seluruh data riwayat transaksi akan dihapus secara permanen dan tidak bisa dikembalikan!',
-      'Ya, Bersihkan!',
-      'warning'
-    );
-    if (ok) {
-      setTransactions([]);
-      try {
-        await clearAllTxns();
-      } catch (e) {
-        console.error('Failed to clear history on server:', e);
-        await loadData();
-      }
-    }
-  };
+  const {
+    deleteTransaction: handleDeleteTxn,
+    clearHistory: handleClearHistory,
+    loadDeletionLogs
+  } = useTransactionActions({
+    transactions,
+    setTransactions,
+    setDeletionLogs,
+    currentShiftUser,
+    loadData
+  });
 
   const handleVerifySuccess = () => {
-    if (!pendingAction) return;
-
-    if (pendingAction.type === 'editSession') {
-      setActiveEditSession(pendingAction.session);
-      setPendingAction(null);
-      clearEscalationToken(); // edit_session is not admin-only
-    } else if (pendingAction.type === 'deleteTxn') {
-      handleDeleteTxn(pendingAction.id);
-      setPendingAction(null);
-    }
+    executePendingAction({
+      onEditSession: (session) => setActiveEditSession(session),
+      onDeleteTxn: (id) => handleDeleteTxn(id)
+    });
   };
 
   const handleSaveEditedSession = async (updatedSession) => {
-    try {
-      await editSession(updatedSession);
-      setActiveSessions(prev => prev.map(s => s.id === updatedSession.id ? normalizeSession(updatedSession) : s));
-      setActiveEditSession(null);
-      swalSuccess('Sesi Diperbarui!');
-    } catch (e) {
-      console.error('Failed to save edited session:', e);
-      swalError('Gagal Memperbarui', 'Periksa koneksi ke server.');
-    }
+    await handleSaveEditedSessionAction(updatedSession);
   };
 
   const handleFinalizePayment = async (cash, qris) => {
     if (!activePaymentData) return;
-    const { session, itemsCalc, base, ot, tol, grand, otStr, otDurStr, endTime } = activePaymentData;
-
-    const itemStr = itemsCalc
-      .filter(it => it.returnQty > 0)
-      .map(it => `${it.code}\u00d7${it.returnQty}`)
-      .join(', ');
-
-    const remainingItems = session.items.map(orig => {
-      const calc = itemsCalc.find(it => it.code === orig.code);
-      const returned = calc ? calc.returnQty : 0;
-      return { code: orig.code, qty: orig.qty - returned };
-    }).filter(it => it.qty > 0);
-
-    const claimPayload = {
-      sessionId: session.id,
-      remainingItems,
-      queueNo: session.queueNo || 0,
-      nama: session.nama,
-      tanggal: session.tanggal || todayStr(),
-      startTime: session.startTime,
-      endTime,
-      items: itemStr,
-      ot: otStr || '-',
-      otDur: otDurStr || '-',
-      totalBase: base,
-      totalOT: ot,
-      totalTol: tol,
-      grandTotal: grand,
-      totalAll: base + grand,
-      payAwal: session.payAwal || 'cash',
-      cash,
-      qris,
-      shift: currentShiftUser || '-'
-    };
-
     try {
-      const res = await claimSession(claimPayload);
-      if (res && !res.error) {
-        const newTxn = normalizeTxn(res.transaction || { ...claimPayload, id: `t-${session.id}` });
-        setTransactions(prev => [...prev.filter(t => t.id !== newTxn.id), newTxn].sort((a, b) => (a.no || 0) - (b.no || 0)));
-        if (remainingItems.length > 0) {
-          setActiveSessions(prev => prev.map(s => s.id === session.id ? { ...s, items: remainingItems } : s));
-        } else {
-          setActiveSessions(prev => prev.filter(s => s.id !== session.id));
-        }
-        if (printSelesai) handlePrintSelesai(newTxn);
-      } else {
-        throw new Error(res?.error || 'Gagal memproses pembayaran');
-      }
-    } catch (e) {
-      console.error('Failed to finalize payment:', e);
-      swalError('Gagal Proses Pembayaran', 'Periksa koneksi ke server.');
+      await handleClaimRentalAction(activePaymentData, cash, qris);
     } finally {
       setActivePaymentData(null);
     }
@@ -526,24 +221,8 @@ function App() {
   if (!currentUserRole) {
     return (
       <RoleSelection 
-        onSelectCashier={() => {
-          setCurrentUserRole('cashier');
-          localStorage.setItem('kw_userRole', 'cashier');
-        }}
-        onSelectAdmin={async (pwd) => {
-          try {
-            const res = await loginAdmin(pwd);
-            if (res?.success) {
-              setAuthToken(res.token);
-              setCurrentUserRole('admin');
-              localStorage.setItem('kw_userRole', 'admin');
-            } else {
-              swalError('Password Salah', res?.error || 'Password admin tidak sesuai.');
-            }
-          } catch {
-            swalError('Koneksi Gagal', 'Tidak dapat terhubung ke server.');
-          }
-        }}
+        onSelectCashier={selectCashierRole}
+        onSelectAdmin={selectAdminRole}
       />
     );
   }
@@ -551,7 +230,7 @@ function App() {
   if (currentUserRole === 'cashier' && !currentShiftUser) {
     return (
       <div>
-        <div className="p-2"><button className="btn btn-sm btn-outline-secondary" onClick={() => { setCurrentUserRole(null); localStorage.removeItem('kw_userRole'); }}>&larr; Ganti Role</button></div>
+        <div className="p-2"><button className="btn btn-sm btn-outline-secondary" onClick={resetRole}>&larr; Ganti Role</button></div>
         <LoginPage onLogin={handleLogin} />
       </div>
     );
@@ -637,7 +316,7 @@ function App() {
             onShowQR={(session) => setActiveQRModalSession(session)}
             onPrintSesi={handlePrintMulai}
             onEditSesi={(session) => {
-              setPendingAction({ type: 'editSession', session });
+              requestEscalation({ type: 'editSession', session });
             }}
           />
         )}
@@ -649,7 +328,7 @@ function App() {
               if (currentUserRole === 'admin') {
                 handleDeleteTxn(id);
               } else {
-                setPendingAction({ type: 'deleteTxn', id });
+                requestEscalation({ type: 'deleteTxn', id });
               }
             }}
             onClearHistory={currentUserRole === 'admin' ? handleClearHistory : null}
@@ -659,10 +338,7 @@ function App() {
         {activeTab === 'log-hapus' && currentUserRole === 'admin' && (
           <DeletionLogTab
             deletionLogs={deletionLogs}
-            onLoadDeletionLogs={async () => {
-              const res = await getDeletionLogs();
-              if (res && res.logs) setDeletionLogs(res.logs);
-            }}
+            onLoadDeletionLogs={loadDeletionLogs}
           />
         )}
         {activeTab === 'pengaturan' && currentUserRole === 'cashier' && (
@@ -730,12 +406,8 @@ function App() {
 
       {pendingAction && (
         <PasswordVerificationModal
-          onVerify={async (pwd) => {
-            const res = await verifyAdminPassword(pwd);
-            if (res?.valid) setEscalationToken(res.token);
-            return res;
-          }}
-          onClose={() => setPendingAction(null)}
+          onVerify={verifyAndEscalate}
+          onClose={cancelEscalation}
           onVerifySuccess={handleVerifySuccess}
         />
       )}

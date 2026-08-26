@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { swalSuccess } from '../lib/swal';
-import { ITEMS, fmtRp } from '../App';
+import { ITEMS } from '../lib/items';
+import { fmtRp } from '../lib/utils';
 
 function QRCodeModal({ session, onClose }) {
   const qrRef = useRef(null);

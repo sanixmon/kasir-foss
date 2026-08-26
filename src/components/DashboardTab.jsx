@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ITEMS, fmtRp, fmtDur } from '../App';
+import { ITEMS } from '../lib/items';
+import { fmtRp, fmtDur } from '../lib/utils';
 import { swalWarning } from '../lib/swal';
 
 function LiveSessionTimer({ session, onSelesaiSewa, onShowQR, onPrintSesi, onEditSesi }) {

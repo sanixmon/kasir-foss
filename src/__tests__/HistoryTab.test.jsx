@@ -2,6 +2,7 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import HistoryTab from '../components/HistoryTab';
+import { getShiftDate } from '../lib/shift';
 
 describe('HistoryTab - Immutability & Role Based Permissions', () => {
   const mockTxns = [
@@ -10,11 +11,7 @@ describe('HistoryTab - Immutability & Role Based Permissions', () => {
       no: '001',
       nama: 'John Doe',
       shift: 'PAGI',
-      tanggal: (() => {
-        const d = new Date();
-        d.setHours(d.getHours() - 6);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-      })(),
+      tanggal: getShiftDate(),
       startTime: Date.now() - 3600000,
       endTime: Date.now(),
       items: '1x Stroller',

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { fmtRp } from '../App';
+import { fmtRp } from '../lib/utils';
 
 function PaymentModal({ bayarData, onClose, onFinalize }) {
   const { grand = 0, session = {} } = bayarData || {};

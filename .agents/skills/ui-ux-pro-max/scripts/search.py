@@ -33,6 +33,9 @@ if sys.stderr.encoding and sys.stderr.encoding.lower() != 'utf-8':
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
 
 
+__all__ = ["format_output", "main"]
+
+
 def format_output(result):
     """Format results for Claude consumption (token-optimized)"""
     if "error" in result:
@@ -59,7 +62,7 @@ def format_output(result):
     return "\n".join(output)
 
 
-if __name__ == "__main__":
+def main(argv=None):
     parser = argparse.ArgumentParser(description="UI Pro Max Search")
     parser.add_argument("query", help="Search query")
     parser.add_argument("--domain", "-d", choices=list(CSV_CONFIG.keys()), help="Search domain")
@@ -79,7 +82,7 @@ if __name__ == "__main__":
     parser.add_argument("--motion", type=int, choices=range(1, 11), metavar="1-10", help="MOTION_INTENSITY dial: 1=subtle, 10=complex; pulls a matching GSAP snippet from motion.csv (only with --design-system)")
     parser.add_argument("--density", type=int, choices=range(1, 11), metavar="1-10", help="VISUAL_DENSITY dial: 1=spacious, 10=dense/dashboard; overrides the spacing scale (only with --design-system)")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     # Design system takes priority
     if args.design_system:
@@ -125,3 +128,7 @@ if __name__ == "__main__":
             print(json.dumps(result, indent=2, ensure_ascii=False))
         else:
             print(format_output(result))
+
+
+if __name__ == "__main__":
+    main()

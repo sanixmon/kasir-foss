@@ -220,9 +220,11 @@ export function fetchAllData() {
   };
 }
 
-function shiftDateStr(ts) {
+export const SHIFT_ROLLOVER_HOUR = 6;
+
+export function shiftDateStr(ts, rolloverHour = SHIFT_ROLLOVER_HOUR) {
   const d = ts ? new Date(ts) : new Date();
-  d.setHours(d.getHours() - 6);
+  d.setHours(d.getHours() - rolloverHour);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
@@ -330,20 +332,27 @@ export function claimSession(payload) {
   const hasRemaining = Array.isArray(payload.remainingItems) && payload.remainingItems.length > 0;
   const txnId = (sessionId && !hasRemaining) ? `t-${sessionId.replace(/^s-/, '')}` : `t-${Math.random().toString(36).slice(2, 8)}`;
 
-  if (sessionId) {
-    const existing = db.prepare('SELECT id FROM active_sessions WHERE id = ?').get(sessionId);
-    if (!existing) {
-      return { success: false, error: 'Session not found or already claimed' };
-    }
-  }
-
   db.exec('BEGIN IMMEDIATE;');
   try {
     if (sessionId) {
+      const existing = db.prepare('SELECT id FROM active_sessions WHERE id = ?').get(sessionId);
+      if (!existing) {
+        db.exec('ROLLBACK;');
+        return { success: false, error: 'Session not found or already claimed' };
+      }
+
       if (hasRemaining) {
-        db.prepare('UPDATE active_sessions SET items = ? WHERE id = ?').run(JSON.stringify(payload.remainingItems), sessionId);
+        const updateInfo = db.prepare('UPDATE active_sessions SET items = ? WHERE id = ?').run(JSON.stringify(payload.remainingItems), sessionId);
+        if (updateInfo.changes === 0) {
+          db.exec('ROLLBACK;');
+          return { success: false, error: 'Session not found or already claimed' };
+        }
       } else {
-        db.prepare('DELETE FROM active_sessions WHERE id = ?').run(sessionId);
+        const deleteInfo = db.prepare('DELETE FROM active_sessions WHERE id = ?').run(sessionId);
+        if (deleteInfo.changes === 0) {
+          db.exec('ROLLBACK;');
+          return { success: false, error: 'Session not found or already claimed' };
+        }
       }
     }
 

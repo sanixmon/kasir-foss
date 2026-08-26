@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ITEMS, fmtRp } from '../App';
+import { ITEMS } from '../lib/items';
+import { fmtRp } from '../lib/utils';
 import { getShiftDate } from '../lib/shift';
 import { changeAdminPassword, backupDatabase } from '../api';
 import { swalSuccess, swalError, swalWarning, swalConfirm } from '../lib/swal';

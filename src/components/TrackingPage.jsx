@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { trackSession } from '../api';
-import { fmtDur, fmtRp } from '../App';
+import { fmtDur, fmtRp } from '../lib/utils';
 import { calcOTCost } from '../lib/ot';
-import { ITEMS } from '../App';
+import { ITEMS } from '../lib/items';
 
 function TrackingPage({ trackingId }) {
   const [loading, setLoading] = useState(true);
