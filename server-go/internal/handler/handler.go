@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"kasir-backend/internal/config"
 	"kasir-backend/internal/model"
@@ -17,8 +18,10 @@ type Handler struct {
 	TxnRepo     *repository.TxnRepository
 	AuthRepo    *repository.AuthRepository
 	SettingRepo *repository.SettingRepository
+	DB          repository.DBPool
 	Hub         *realtime.Hub
 	Config      *config.Config
+	StartTime   time.Time
 }
 
 func NewHandler(
@@ -27,6 +30,7 @@ func NewHandler(
 	txnRepo *repository.TxnRepository,
 	authRepo *repository.AuthRepository,
 	settingRepo *repository.SettingRepository,
+	db repository.DBPool,
 	hub *realtime.Hub,
 	cfg *config.Config,
 ) *Handler {
@@ -36,8 +40,10 @@ func NewHandler(
 		TxnRepo:     txnRepo,
 		AuthRepo:    authRepo,
 		SettingRepo: settingRepo,
+		DB:          db,
 		Hub:         hub,
 		Config:      cfg,
+		StartTime:   time.Now(),
 	}
 }
 

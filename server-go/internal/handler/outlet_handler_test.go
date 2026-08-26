@@ -30,6 +30,7 @@ func setupTestHandler(t *testing.T) (*Handler, pgxmock.PgxPoolIface) {
 		repository.NewTxnRepository(mock),
 		repository.NewAuthRepository(mock),
 		repository.NewSettingRepository(mock),
+		mock,
 		hub,
 		&config.Config{CorsOrigin: "*"},
 	)

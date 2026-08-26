@@ -67,3 +67,9 @@ func (h *Hub) Unregister(client *Client) {
 func (h *Hub) Broadcast(event Event) {
 	h.broadcast <- event
 }
+
+func (h *Hub) ActiveClientsCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.clients)
+}

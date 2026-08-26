@@ -45,7 +45,7 @@ func main() {
 	go hub.Run()
 
 	// Initialize Handlers & Router
-	h := handler.NewHandler(outletRepo, sessionRepo, txnRepo, authRepo, settingRepo, hub, cfg)
+	h := handler.NewHandler(outletRepo, sessionRepo, txnRepo, authRepo, settingRepo, pool, hub, cfg)
 	router := handler.NewRouter(h)
 
 	addr := fmt.Sprintf(":%s", cfg.Port)

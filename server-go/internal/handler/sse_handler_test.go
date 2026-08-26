@@ -31,6 +31,7 @@ func TestSSEHandler_StreamAndBroadcast(t *testing.T) {
 		repository.NewTxnRepository(mock),
 		repository.NewAuthRepository(mock),
 		repository.NewSettingRepository(mock),
+		mock,
 		hub,
 		&config.Config{CorsOrigin: "*"},
 	)

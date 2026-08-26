@@ -43,13 +43,9 @@ func NewRouter(h *Handler) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(CorsMiddleware(h.Config.CorsOrigin))
 
-	// Health Check
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		h.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
-		h.writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
+	// Monitoring & Health Check
+	r.Get("/health", h.HandleHealth)
+	r.Get("/api/health", h.HandleHealth)
 
 	// SSE Realtime Stream
 	r.Get("/api/stream", h.HandleStream)
