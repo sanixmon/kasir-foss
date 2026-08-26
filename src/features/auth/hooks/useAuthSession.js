@@ -68,6 +68,8 @@ export function useAuthSession(options = {}) {
     const cName = user.charAt(0).toUpperCase() + user.slice(1);
     setCurrentShiftUser(cName);
     localStorage.setItem('kw_currentUser', cName);
+    setCurrentUserRole('cashier');
+    localStorage.setItem('kw_userRole', 'cashier');
 
     const shiftDate = getShiftDate();
     localStorage.setItem('kw_shiftDate', shiftDate);

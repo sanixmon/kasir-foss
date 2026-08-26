@@ -9,7 +9,6 @@ import HistoryTab from './features/transactions/components/HistoryTab';
 import DeletionLogTab from './features/transactions/components/DeletionLogTab';
 import SettingsTab from './components/SettingsTab';
 import FooterNav from './components/FooterNav';
-import RoleSelection from './features/auth/components/RoleSelection';
 
 import CalculateRentalModal from './features/rentals/components/CalculateRentalModal';
 import PaymentModal from './components/PaymentModal';
@@ -224,21 +223,13 @@ function App() {
     localStorage.setItem('kw_printSelesai', String(val));
   };
 
-  if (!currentUserRole) {
+  if (!isAuthenticated) {
     return (
-      <RoleSelection 
-        onSelectCashier={selectCashierRole}
-        onSelectAdmin={selectAdminRole}
+      <LoginPage
+        onLogin={handleLogin}
+        onAdminLogin={selectAdminRole}
+        activeOutletId={activeOutletId}
       />
-    );
-  }
-
-  if (currentUserRole === 'cashier' && !currentShiftUser) {
-    return (
-      <div>
-        <div className="p-2"><button className="btn btn-sm btn-outline-secondary" onClick={resetRole}>&larr; Ganti Role</button></div>
-        <LoginPage onLogin={handleLogin} activeOutletId={activeOutletId} />
-      </div>
     );
   }
 
