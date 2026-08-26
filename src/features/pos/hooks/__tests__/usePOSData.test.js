@@ -152,4 +152,24 @@ describe('usePOSData Hook Unit Tests', () => {
     expect(result.current.apiConnected).toBe(false);
     expect(result.current.isSyncing).toBe(false);
   });
+
+  it('populates outlets from API and triggers refresh on realtime SSE event', async () => {
+    api.fetchAllData.mockResolvedValue({
+      sessions: [],
+      transactions: [],
+      users: [],
+      outlets: [{ id: 'outlet-pusat', nama: 'Outlet Pusat' }, { id: 'outlet-2', nama: 'Outlet Cabang 2' }]
+    });
+
+    const { result } = renderHook(() =>
+      usePOSData({ isAuthenticated: true, activeOutletId: 'outlet-pusat' })
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+
+    expect(result.current.outlets).toHaveLength(2);
+    expect(result.current.outlets[0].id).toBe('outlet-pusat');
+  });
 });

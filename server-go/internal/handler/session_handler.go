@@ -12,6 +12,9 @@ import (
 
 func (h *Handler) GetSessions(w http.ResponseWriter, r *http.Request) {
 	outletID := r.URL.Query().Get("outlet_id")
+	if outletID == "" {
+		outletID = r.Header.Get("X-Outlet-ID")
+	}
 	sessions, err := h.SessionRepo.GetSessionsByOutlet(r.Context(), outletID)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())

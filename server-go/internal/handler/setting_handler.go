@@ -26,6 +26,9 @@ type LegacyActionRequest struct {
 
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	outletID := r.URL.Query().Get("outlet_id")
+	if outletID == "" {
+		outletID = r.Header.Get("X-Outlet-ID")
+	}
 	settings, err := h.SettingRepo.GetSettings(r.Context(), outletID)
 	if err != nil {
 		h.writeError(w, http.StatusInternalServerError, err.Error())
@@ -75,6 +78,9 @@ func (h *Handler) SaveSetting(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) FetchAllData(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	outletID := r.URL.Query().Get("outlet_id")
+	if outletID == "" {
+		outletID = r.Header.Get("X-Outlet-ID")
+	}
 
 	sessions, err := h.SessionRepo.GetSessionsByOutlet(ctx, outletID)
 	if err != nil {
@@ -143,10 +149,11 @@ func (h *Handler) HandleLegacyAction(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Auth gate
-	isPublic := action == "login_cashier" || action == "login_admin" || action == "track_session"
+	isPublic := action == "login_cashier" || action == "login_admin" || action == "track_session" || action == "get_outlets"
 	isAdminOnly := action == "save_setting" || action == "save_user" || action == "delete_user" ||
 		action == "delete_txn" || action == "clear_all_txns" || action == "change_admin_pass" ||
-		action == "get_deletion_logs" || action == "add_deletion_log" || action == "backup_db"
+		action == "get_deletion_logs" || action == "add_deletion_log" || action == "backup_db" ||
+		action == "create_outlet" || action == "delete_outlet"
 
 	if !isPublic {
 		if auth == nil {
@@ -222,6 +229,17 @@ func (h *Handler) HandleLegacyAction(w http.ResponseWriter, r *http.Request) {
 		h.GetDeletionLogs(w, payloadReq)
 	case "add_deletion_log":
 		h.AddDeletionLog(w, payloadReq)
+	case "get_outlets":
+		h.GetOutlets(w, r)
+	case "create_outlet":
+		h.CreateOutlet(w, payloadReq)
+	case "delete_outlet":
+		var p struct {
+			ID string `json:"id"`
+		}
+		_ = json.Unmarshal(payloadBytes, &p)
+		delReq, _ := http.NewRequestWithContext(r.Context(), http.MethodDelete, fmt.Sprintf("/api/outlets/%s", p.ID), nil)
+		h.DeleteOutlet(w, delReq)
 	case "backup_db":
 		h.writeJSON(w, http.StatusOK, map[string]any{
 			"success": true,

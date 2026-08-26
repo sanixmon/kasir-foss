@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { fmtRp } from '../../../lib/utils';
 import { aggregateHistory } from '../../../lib/history';
 import { swalWarning } from '../../../lib/swal';
@@ -40,22 +40,63 @@ const formatTimeStr = (val) => {
   return d.toTimeString().slice(0, 5);
 };
 
-function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, currentUserRole }) {
+function HistoryTab({
+  transactions = [],
+  onPrintTxn,
+  onDeleteTxn,
+  onClearHistory,
+  currentUserRole,
+  outlets = [],
+  selectedOutletFilter,
+  onSelectOutletFilter
+}) {
   const isCashier = currentUserRole === 'cashier';
   const [filterMode, setFilterMode] = useState('daily');
   const [filterDate, setFilterDate] = useState(() => getShiftDate());
   const [filterMonth, setFilterMonth] = useState(() => getShiftDate().slice(0, 7));
   const [filterYear, setFilterYear] = useState(() => getShiftDate().slice(0, 4));
-  const [sortOrder, setSortOrder] = useState('desc'); // Urutkan berdasarkan waktu close bill
+  const [sortOrder, setSortOrder] = useState('desc');
+  const [localOutletFilter, setLocalOutletFilter] = useState('all');
+
+  const effectiveOutletFilter = selectedOutletFilter !== undefined ? selectedOutletFilter : localOutletFilter;
+  const handleOutletFilterChange = (val) => {
+    setLocalOutletFilter(val);
+    if (typeof onSelectOutletFilter === 'function') {
+      onSelectOutletFilter(val);
+    }
+  };
 
   const effectiveMode = isCashier ? 'daily' : filterMode;
   const filterValue = isCashier ? getShiftDate() : (filterMode === 'daily' ? filterDate : filterMode === 'monthly' ? filterMonth : filterYear);
+
+  // Scoped transactions based on admin outlet filter
+  const scopedTransactions = useMemo(() => {
+    if (isCashier || !effectiveOutletFilter || effectiveOutletFilter === 'all') {
+      return transactions;
+    }
+    return transactions.filter(t => (t.outletId || 'outlet-pusat') === effectiveOutletFilter);
+  }, [transactions, isCashier, effectiveOutletFilter]);
 
   const {
     filtered, totalPokok, totalPokokCash, totalPokokQris, 
     totalTambahan, totalOTCash, totalOTQris, 
     totalCashAll, totalQrisAll, grandTotal
-  } = aggregateHistory(transactions, effectiveMode, filterValue, sortOrder);
+  } = aggregateHistory(scopedTransactions, effectiveMode, filterValue, sortOrder);
+
+  // Revenue breakdown per outlet when admin selects "Semua Outlet"
+  const outletBreakdown = useMemo(() => {
+    if (isCashier || effectiveOutletFilter !== 'all') return [];
+    const map = {};
+    (filtered || []).forEach(t => {
+      const oId = t.outletId || 'outlet-pusat';
+      if (!map[oId]) {
+        map[oId] = { outletId: oId, count: 0, total: 0 };
+      }
+      map[oId].count += 1;
+      map[oId].total += Number(t.totalAll || ((t.totalBase || 0) + (t.grandTotal || 0))) || 0;
+    });
+    return Object.values(map);
+  }, [filtered, isCashier, effectiveOutletFilter]);
 
   const handleExport = () => {
     if (filtered.length === 0) {
@@ -69,6 +110,7 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, cur
     const dataRows = filtered.map(t => ({
       No: t.no, 
       Nama: t.nama, 
+      Outlet: t.outletId || 'outlet-pusat',
       Shift: t.shift, 
       Tanggal: t.tanggal || dateStr(t.startTime),
       Mulai: formatTimeStr(t.startTime),
@@ -104,6 +146,18 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, cur
               </div>
             ) : (
               <>
+                <select
+                  className="cfield-sm"
+                  value={effectiveOutletFilter}
+                  onChange={e => handleOutletFilterChange(e.target.value)}
+                  aria-label="Filter Outlet"
+                >
+                  <option value="all">Semua Outlet</option>
+                  {outlets.map(o => (
+                    <option key={o.id} value={o.id}>{o.nama || o.name || o.id}</option>
+                  ))}
+                </select>
+
                 <select className="cfield-sm" value={filterMode} onChange={e => setFilterMode(e.target.value)}>
                   <option value="daily">Harian</option>
                   <option value="monthly">Bulanan</option>
@@ -167,12 +221,31 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, cur
             <div className="col-12 col-md-4 col-xl-2"><div className="sum-card"><div className="sum-label">Total QRIS</div><div className="sum-val" style={{ color: 'var(--text)' }}>{fmtRp(totalQrisAll)}</div></div></div>
             <div className="col-12 col-md-4 col-xl-2"><div className="sum-card" style={{ borderColor: 'var(--cyan)', background: 'rgba(88,166,255,0.05)' }}><div className="sum-label clr-cyan">Grand Total</div><div className="sum-val clr-cyan">{fmtRp(grandTotal)}</div></div></div>
           </div>
+
+          {outletBreakdown.length > 0 && (
+            <div className="mb-3 p-2 rounded-3 border border-secondary bg-dark d-flex gap-2 flex-wrap align-items-center">
+              <span className="small text-secondary fw-bold"><i className="bi bi-diagram-3-fill me-1 text-info"></i>Breakdown Pendapatan per Outlet:</span>
+              {outletBreakdown.map(b => {
+                const outletObj = outlets.find(o => o.id === b.outletId);
+                const outletName = outletObj ? (outletObj.nama || outletObj.name) : b.outletId;
+                return (
+                  <div key={b.outletId} className="badge bg-secondary bg-opacity-25 border border-secondary text-light px-2 py-1 d-flex gap-2 align-items-center">
+                    <span className="fw-bold text-info">{outletName}:</span>
+                    <span className="font-monospace text-warning">{fmtRp(b.total)}</span>
+                    <span className="text-secondary small">({b.count} txn)</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           
           <div className="table-responsive">
             <table className="ctable">
               <thead>
                 <tr>
-                  <th>No</th><th>Nama</th><th>Shift</th><th>Tgl</th><th style={{ whiteSpace: 'nowrap' }}>Waktu (Close)</th>
+                  <th>No</th>
+                  {!isCashier && effectiveOutletFilter === 'all' && <th>Outlet</th>}
+                  <th>Nama</th><th>Shift</th><th>Tgl</th><th style={{ whiteSpace: 'nowrap' }}>Waktu (Close)</th>
                   <th>Item</th><th>Tambahan</th><th>Dur OT</th>
                   <th className="th-pokok-cash"><i className="bi bi-cash-stack me-1"></i>Pokok (C)</th>
                   <th className="th-pokok-qris"><i className="bi bi-qr-code-scan me-1"></i>Pokok (QR)</th>
@@ -185,7 +258,7 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, cur
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan="16"><div className="empty-box"><i className="bi bi-receipt" style={{fontSize:'3.5rem', opacity:0.5}}></i><p>Tidak ada transaksi di tanggal ini</p></div></td></tr>
+                  <tr><td colSpan={!isCashier && effectiveOutletFilter === 'all' ? 17 : 16}><div className="empty-box"><i className="bi bi-receipt" style={{fontSize:'3.5rem', opacity:0.5}}></i><p>Tidak ada transaksi di tanggal ini</p></div></td></tr>
                 ) : (
                   filtered.map((t, idx) => {
                     const isCash = (t.payAwal || 'cash') === 'cash';
@@ -201,6 +274,13 @@ function HistoryTab({ transactions, onPrintTxn, onDeleteTxn, onClearHistory, cur
                     return (
                       <tr key={t.id}>
                         <td data-label="No">{idx + 1}</td>
+                        {!isCashier && effectiveOutletFilter === 'all' && (
+                          <td data-label="Outlet">
+                            <span className="badge bg-secondary bg-opacity-50 text-white font-monospace" style={{ fontSize: '0.72rem' }}>
+                              {t.outletId || 'outlet-pusat'}
+                            </span>
+                          </td>
+                        )}
                         <td data-label="Nama"><strong>{t.nama}</strong></td>
                         <td data-label="Shift"><span className="badge-shift">{shiftCode(t.shift)}</span></td>
                         <td data-label="Tgl">{t.tanggal || dateStr(t.startTime)}</td>

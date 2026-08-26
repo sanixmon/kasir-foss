@@ -37,6 +37,8 @@ function App() {
     isAuthenticated,
     currentUserRole,
     currentShiftUser,
+    activeOutletId,
+    setActiveOutletId,
     setCurrentUserRole,
     handleLogin,
     selectCashierRole,
@@ -63,6 +65,7 @@ function App() {
   } = useAdminEscalation();
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [adminOutletFilter, setAdminOutletFilter] = useState('all');
 
   const [theme, setTheme] = useState(() => {
     return localStorage.getItem('kw_theme') || 'dark';
@@ -89,14 +92,17 @@ function App() {
     transactions,
     setTransactions,
     users,
+    outlets,
     deletionLogs,
     setDeletionLogs,
     apiConnected,
     isSyncing,
     lastSyncTime,
-    loadData
+    loadData,
+    isStreamConnected
   } = usePOSData({
     isAuthenticated,
+    activeOutletId: currentUserRole === 'admin' ? (adminOutletFilter === 'all' ? 'all' : adminOutletFilter) : activeOutletId,
     onUnauthorized: clearSessionState,
     onShiftDateChange: () => setShiftQueueNo(0)
   });
@@ -231,7 +237,7 @@ function App() {
     return (
       <div>
         <div className="p-2"><button className="btn btn-sm btn-outline-secondary" onClick={resetRole}>&larr; Ganti Role</button></div>
-        <LoginPage onLogin={handleLogin} />
+        <LoginPage onLogin={handleLogin} activeOutletId={activeOutletId} />
       </div>
     );
   }
@@ -318,6 +324,10 @@ function App() {
             onEditSesi={(session) => {
               requestEscalation({ type: 'editSession', session });
             }}
+            currentUserRole={currentUserRole}
+            outlets={outlets}
+            selectedOutletFilter={adminOutletFilter}
+            onSelectOutletFilter={setAdminOutletFilter}
           />
         )}
         {activeTab === 'riwayat' && (
@@ -333,6 +343,9 @@ function App() {
             }}
             onClearHistory={currentUserRole === 'admin' ? handleClearHistory : null}
             currentUserRole={currentUserRole}
+            outlets={outlets}
+            selectedOutletFilter={adminOutletFilter}
+            onSelectOutletFilter={setAdminOutletFilter}
           />
         )}
         {activeTab === 'log-hapus' && currentUserRole === 'admin' && (

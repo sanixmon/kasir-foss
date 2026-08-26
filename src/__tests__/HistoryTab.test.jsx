@@ -88,4 +88,70 @@ describe('HistoryTab - Immutability & Role Based Permissions', () => {
     fireEvent.click(clearBtn);
     expect(mockClear).toHaveBeenCalledTimes(1);
   });
+
+  it('filters transactions by outlet and displays revenue breakdown per outlet for admin', () => {
+    const multiOutletTxns = [
+      {
+        id: 'txn-1',
+        no: '001',
+        nama: 'John Doe',
+        shift: 'PAGI',
+        outletId: 'outlet-pusat',
+        tanggal: getShiftDate(),
+        startTime: Date.now() - 3600000,
+        endTime: Date.now(),
+        items: '1x Stroller',
+        totalBase: 20000,
+        grandTotal: 0,
+        totalAll: 20000,
+        payAwal: 'cash'
+      },
+      {
+        id: 'txn-2',
+        no: '002',
+        nama: 'Jane Doe',
+        shift: 'SORE',
+        outletId: 'outlet-cabang',
+        tanggal: getShiftDate(),
+        startTime: Date.now() - 1800000,
+        endTime: Date.now(),
+        items: '1x Scooter',
+        totalBase: 35000,
+        grandTotal: 0,
+        totalAll: 35000,
+        payAwal: 'qris'
+      }
+    ];
+
+    const mockOutlets = [
+      { id: 'outlet-pusat', nama: 'Outlet Pusat' },
+      { id: 'outlet-cabang', nama: 'Outlet Cabang' }
+    ];
+
+    const { rerender } = render(
+      <HistoryTab
+        transactions={multiOutletTxns}
+        onPrintTxn={vi.fn()}
+        onDeleteTxn={vi.fn()}
+        currentUserRole="admin"
+        outlets={mockOutlets}
+      />
+    );
+
+    // Filter dropdown exists
+    const outletSelect = screen.getByLabelText(/Filter Outlet/i);
+    expect(outletSelect).toBeInTheDocument();
+    expect(screen.getByText(/Semua Outlet/i)).toBeInTheDocument();
+
+    // Breakdown per outlet should be visible when "Semua Outlet" is selected
+    expect(screen.getByText(/Breakdown Pendapatan per Outlet/i)).toBeInTheDocument();
+    expect(screen.getByText(/Outlet Pusat:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Outlet Cabang:/i)).toBeInTheDocument();
+
+    // Filter to outlet-cabang
+    fireEvent.change(outletSelect, { target: { value: 'outlet-cabang' } });
+
+    expect(screen.getByText('Jane Doe')).toBeInTheDocument();
+    expect(screen.queryByText('John Doe')).toBeNull();
+  });
 });

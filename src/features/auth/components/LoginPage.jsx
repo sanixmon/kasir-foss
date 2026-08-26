@@ -1,11 +1,37 @@
-import React, { useState } from 'react';
-import { loginCashier, setAuthToken } from '../../../api';
+import React, { useState, useEffect } from 'react';
+import { loginCashier, setAuthToken, fetchOutlets, setActiveOutletId } from '../../../api';
 
-function LoginPage({ onLogin }) {
+function LoginPage({ onLogin, activeOutletId: initialOutletId }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [outlets, setOutlets] = useState([]);
+  const [selectedOutlet, setSelectedOutlet] = useState(() => {
+    return initialOutletId || localStorage.getItem('kw_activeOutletId') || 'outlet-pusat';
+  });
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    const loadOutlets = async () => {
+      try {
+        const res = await fetchOutlets();
+        if (isMounted) {
+          const list = Array.isArray(res) ? res : Array.isArray(res?.outlets) ? res.outlets : [];
+          if (list.length > 0) {
+            setOutlets(list);
+            if (!selectedOutlet || !list.some(o => o.id === selectedOutlet)) {
+              setSelectedOutlet(list[0].id);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load outlets list:', err);
+      }
+    };
+    loadOutlets();
+    return () => { isMounted = false; };
+  }, []);
 
   const handleLogin = async () => {
     const trimmed = username.trim();
@@ -13,11 +39,15 @@ function LoginPage({ onLogin }) {
     if (!password) { setError('Password shift harus diisi!'); return; }
 
     setError('');
+    setIsSubmitting(true);
     try {
-      const res = await loginCashier(trimmed, password);
+      const res = await loginCashier(trimmed, password, selectedOutlet);
       if (res && res.success) {
         setAuthToken(res.token);
-        onLogin(res.user.username);
+        if (selectedOutlet) {
+          setActiveOutletId(selectedOutlet);
+        }
+        onLogin(res.user?.username || trimmed);
       } else {
         setError(res?.error || 'Login gagal');
       }
@@ -37,6 +67,24 @@ function LoginPage({ onLogin }) {
         </div>
         <hr className="login-divider" style={{ marginTop: 0, marginBottom: '20px' }} />
         <div className="login-shift-title"><i className="bi bi-person-badge-fill me-1"></i>Login Shift Kasir</div>
+        
+        {outlets.length > 0 && (
+          <div className="mb-2">
+            <select
+              className="login-field"
+              value={selectedOutlet}
+              onChange={(e) => setSelectedOutlet(e.target.value)}
+              aria-label="Pilih Outlet"
+            >
+              {outlets.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.nama || o.name || o.id}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <input
           type="text"
           value={username}

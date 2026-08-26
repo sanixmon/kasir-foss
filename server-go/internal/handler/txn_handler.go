@@ -20,6 +20,9 @@ type DeleteTxnRequest struct {
 
 func (h *Handler) GetTransactions(w http.ResponseWriter, r *http.Request) {
 	outletID := r.URL.Query().Get("outlet_id")
+	if outletID == "" {
+		outletID = r.Header.Get("X-Outlet-ID")
+	}
 	tanggal := r.URL.Query().Get("tanggal")
 	txns, err := h.TxnRepo.GetTransactions(r.Context(), outletID, tanggal)
 	if err != nil {

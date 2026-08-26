@@ -15,6 +15,12 @@ let authToken = (() => {
 // separate and NEVER replaces the main token, so the session isn't clobbered.
 let escalationToken = null;
 
+// Active outlet state for scoping requests
+const ACTIVE_OUTLET_KEY = 'kw_activeOutletId';
+let activeOutletId = (() => {
+  try { return localStorage.getItem(ACTIVE_OUTLET_KEY) || null; } catch { return null; }
+})();
+
 export function setApiUrl(url) {
   APPS_SCRIPT_URL = url;
 }
@@ -31,6 +37,18 @@ export function getAuthToken() {
   return authToken;
 }
 
+export function setActiveOutletId(outletId) {
+  activeOutletId = outletId || null;
+  try {
+    if (outletId) localStorage.setItem(ACTIVE_OUTLET_KEY, outletId);
+    else localStorage.removeItem(ACTIVE_OUTLET_KEY);
+  } catch { /* ignore */ }
+}
+
+export function getActiveOutletId() {
+  return activeOutletId;
+}
+
 export function setEscalationToken(token) {
   escalationToken = token || null;
 }
@@ -41,7 +59,12 @@ export function clearEscalationToken() {
 
 function authHeaders() {
   const t = escalationToken || authToken;
-  return t ? { Authorization: `Bearer ${t}` } : {};
+  const headers = {};
+  if (t) headers['Authorization'] = `Bearer ${t}`;
+  if (activeOutletId && activeOutletId !== 'all') {
+    headers['X-Outlet-ID'] = activeOutletId;
+  }
+  return headers;
 }
 
 export async function apiCall(action, payload = {}, timeoutMs = 8000) {
@@ -95,9 +118,12 @@ export const deleteTxn = (data) => apiCall('delete_txn', typeof data === 'object
 export const clearAllTxns = () => apiCall('clear_all_txns');
 export const verifyAdminPassword = (password) => apiCall('verify_admin', { password });
 export const changeAdminPassword = (oldPassword, newPassword) => apiCall('change_admin_pass', { old_password: oldPassword, new_password: newPassword });
-export const loginCashier = (username, password) => apiCall('login_cashier', { username, password });
+export const loginCashier = (username, password, outletId) => apiCall('login_cashier', { username, password, outletId });
 export const loginAdmin = (password) => apiCall('login_admin', { password });
 export const trackSession = (id) => apiCall('track_session', { id });
 export const backupDatabase = () => apiCall('backup_db');
 export const getDeletionLogs = () => apiCall('get_deletion_logs', {});
 export const addDeletionLog = (payload) => apiCall('add_deletion_log', payload);
+export const fetchOutlets = () => apiCall('get_outlets', {});
+export const createOutlet = (data) => apiCall('create_outlet', data);
+export const deleteOutlet = (id) => apiCall('delete_outlet', { id });

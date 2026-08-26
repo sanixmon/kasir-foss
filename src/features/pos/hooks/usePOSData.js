@@ -2,14 +2,16 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchAllData } from '../../../api';
 import { normalizeSession, normalizeTxn } from '../../../lib/utils';
 import { getShiftDate } from '../../../lib/shift';
+import { useRealtimeStream } from '../../realtime/useRealtimeStream';
 
 /**
- * Custom hook for managing POS data synchronization, normalization, and polling lifecycle.
- * Source of truth for server-derived entities (sessions, transactions, users, deletionLogs).
+ * Custom hook for managing POS data synchronization, normalization, realtime SSE stream, and polling lifecycle.
+ * Source of truth for server-derived entities (sessions, transactions, users, outlets, deletionLogs).
  */
 export function usePOSData(options = {}) {
   const {
     isAuthenticated = true,
+    activeOutletId = null,
     pollingIntervalMs = 5000,
     onUnauthorized,
     onShiftDateChange
@@ -18,6 +20,7 @@ export function usePOSData(options = {}) {
   const [activeSessions, setActiveSessions] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [users, setUsers] = useState([]);
+  const [outlets, setOutlets] = useState([]);
   const [deletionLogs, setDeletionLogs] = useState([]);
   const [apiConnected, setApiConnected] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -60,6 +63,10 @@ export function usePOSData(options = {}) {
           setUsers(data.users);
         }
 
+        if (Array.isArray(data.outlets)) {
+          setOutlets(data.outlets);
+        }
+
         setApiConnected(true);
         setLastSyncTime(new Date().toLocaleTimeString('id-ID'));
       }
@@ -78,7 +85,18 @@ export function usePOSData(options = {}) {
     }
   }, []);
 
-  // Poll the server only once authenticated — never while on the login screens.
+  const handleRealtimeEvent = useCallback((event) => {
+    // When a realtime SSE mutation event arrives, refresh data immediately
+    loadData();
+  }, [loadData]);
+
+  const { isConnected: isStreamConnected } = useRealtimeStream(
+    activeOutletId,
+    handleRealtimeEvent,
+    { enabled: isAuthenticated }
+  );
+
+  // Poll the server as fallback and initial sync once authenticated
   useEffect(() => {
     if (!isAuthenticated) return;
     loadData();
@@ -93,6 +111,8 @@ export function usePOSData(options = {}) {
     setTransactions,
     users,
     setUsers,
+    outlets,
+    setOutlets,
     deletionLogs,
     setDeletionLogs,
     apiConnected,
@@ -100,6 +120,7 @@ export function usePOSData(options = {}) {
     isSyncing,
     lastSyncTime,
     loadData,
-    refresh: loadData
+    refresh: loadData,
+    isStreamConnected
   };
 }

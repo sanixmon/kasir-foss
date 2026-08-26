@@ -3,7 +3,7 @@ import { ITEMS } from '../lib/items';
 import { fmtRp, fmtDur } from '../lib/utils';
 import { swalWarning } from '../lib/swal';
 
-function LiveSessionTimer({ session, onSelesaiSewa, onShowQR, onPrintSesi, onEditSesi }) {
+function LiveSessionTimer({ session, onSelesaiSewa, onShowQR, onPrintSesi, onEditSesi, showOutletBadge }) {
   const safeStart = (session.startTime && Number(session.startTime) > 1577836800000) ? Number(session.startTime) : Date.now();
   const [elapsedSec, setElapsedSec] = useState(() => Math.max(0, Math.floor((Date.now() - safeStart) / 1000)));
 
@@ -45,6 +45,11 @@ function LiveSessionTimer({ session, onSelesaiSewa, onShowQR, onPrintSesi, onEdi
             <span className="aktif-queue-badge me-1" title="Nomor Antrian">#{session.queueNo}</span>
           )}
           <i className="bi bi-person-fill me-1 clr-cyan"></i>{session.nama || 'Penyewa'}
+          {showOutletBadge && session.outletId && (
+            <span className="badge bg-secondary bg-opacity-50 text-white ms-1" style={{ fontSize: '.65rem' }}>
+              {session.outletId}
+            </span>
+          )}
           {isZombie && (
             <span title="Sesi sudah lebih dari 8 jam!" style={{
               marginLeft: 6, fontSize: '.6rem', fontWeight: 800,
@@ -85,12 +90,35 @@ function LiveSessionTimer({ session, onSelesaiSewa, onShowQR, onPrintSesi, onEdi
   );
 }
 
-function DashboardTab({ activeSessions, onStartSewa, getImgUrl, onSelesaiSewa, onShowQR, onPrintSesi, onEditSesi }) {
+function DashboardTab({
+  activeSessions = [],
+  onStartSewa,
+  getImgUrl,
+  onSelesaiSewa,
+  onShowQR,
+  onPrintSesi,
+  onEditSesi,
+  currentUserRole,
+  outlets = [],
+  selectedOutletFilter,
+  onSelectOutletFilter
+}) {
   const [inputNama, setInputNama] = useState('');
   const [payAwal, setPayAwal] = useState('cash');
   const [selectedQty, setSelectedQty] = useState({});
   const [searchQuery, setSearchQuery] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [localOutletFilter, setLocalOutletFilter] = useState('all');
+
+  const isAdmin = currentUserRole === 'admin';
+  const effectiveOutletFilter = selectedOutletFilter !== undefined ? selectedOutletFilter : localOutletFilter;
+
+  const handleOutletFilterChange = (val) => {
+    setLocalOutletFilter(val);
+    if (typeof onSelectOutletFilter === 'function') {
+      onSelectOutletFilter(val);
+    }
+  };
 
   const changeQty = (code, delta) => {
     setSelectedQty(prev => {
@@ -123,7 +151,15 @@ function DashboardTab({ activeSessions, onStartSewa, getImgUrl, onSelesaiSewa, o
     }
   };
 
-  const filteredSessions = (activeSessions || [])
+  const scopedSessions = (activeSessions || []).filter(s => {
+    if (!s) return false;
+    if (isAdmin && effectiveOutletFilter && effectiveOutletFilter !== 'all') {
+      return (s.outletId || 'outlet-pusat') === effectiveOutletFilter;
+    }
+    return true;
+  });
+
+  const filteredSessions = scopedSessions
     .filter(s => s && String(s.nama || '').toLowerCase().includes(String(searchQuery || '').toLowerCase()))
     .sort((a, b) => (b.startTime || 0) - (a.startTime || 0));
 
@@ -218,9 +254,25 @@ function DashboardTab({ activeSessions, onStartSewa, getImgUrl, onSelesaiSewa, o
         
         <div className="col-12 col-lg-7 d-flex flex-column">
           <div className="panel flex-fill">
-            <div className="panel-head">
+            <div className="panel-head flex-wrap gap-2">
               <i className="bi bi-people-fill clr-cyan"></i><span>Penyewa Aktif</span>
-              <span className="ms-auto aktif-count">{activeSessions.length}</span>
+              {isAdmin && (
+                <select
+                  className="cfield-sm ms-auto"
+                  style={{ maxWidth: '160px' }}
+                  value={effectiveOutletFilter}
+                  onChange={(e) => handleOutletFilterChange(e.target.value)}
+                  aria-label="Filter Outlet Dashboard"
+                >
+                  <option value="all">Semua Outlet</option>
+                  {outlets.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.nama || o.name || o.id}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <span className={isAdmin ? 'aktif-count' : 'ms-auto aktif-count'}>{scopedSessions.length}</span>
             </div>
             <div className="panel-body">
               <div className="input-ico-wrap mb-3">
@@ -244,7 +296,8 @@ function DashboardTab({ activeSessions, onStartSewa, getImgUrl, onSelesaiSewa, o
                       onSelesaiSewa={onSelesaiSewa} 
                       onShowQR={onShowQR} 
                       onPrintSesi={onPrintSesi} 
-                      onEditSesi={onEditSesi} 
+                      onEditSesi={onEditSesi}
+                      showOutletBadge={isAdmin && effectiveOutletFilter === 'all'}
                     />
                   ))
                 )}

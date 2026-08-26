@@ -42,19 +42,42 @@ export function useAuthSession(options = {}) {
     }
   });
 
+  const [activeOutletId, setActiveOutletIdState] = useState(() => {
+    try {
+      return localStorage.getItem('kw_activeOutletId') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  const setActiveOutletId = useCallback((id) => {
+    setActiveOutletIdState(id || null);
+    try {
+      if (id) localStorage.setItem('kw_activeOutletId', id);
+      else localStorage.removeItem('kw_activeOutletId');
+    } catch { /* ignore */ }
+  }, []);
+
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [logoutConfirmName, setLogoutConfirmName] = useState('');
 
   // Authenticated = completed login (admin, or cashier with an active shift user).
   const isAuthenticated = currentUserRole === 'admin' || (currentUserRole === 'cashier' && !!currentShiftUser);
 
-  const handleLogin = useCallback((user) => {
+  const handleLogin = useCallback((user, outletId) => {
     const cName = user.charAt(0).toUpperCase() + user.slice(1);
     setCurrentShiftUser(cName);
     localStorage.setItem('kw_currentUser', cName);
 
     const shiftDate = getShiftDate();
     localStorage.setItem('kw_shiftDate', shiftDate);
+
+    if (outletId) {
+      setActiveOutletIdState(outletId);
+      try {
+        localStorage.setItem('kw_activeOutletId', outletId);
+      } catch { /* ignore */ }
+    }
   }, []);
 
   const selectCashierRole = useCallback(() => {
@@ -96,8 +119,10 @@ export function useAuthSession(options = {}) {
     localStorage.removeItem('kw_currentUser');
     localStorage.removeItem('kw_shiftQNo');
     localStorage.removeItem('kw_userRole');
+    localStorage.removeItem('kw_activeOutletId');
     setCurrentShiftUser(null);
     setCurrentUserRole(null);
+    setActiveOutletIdState(null);
     if (typeof onSessionCleared === 'function') {
       onSessionCleared();
     }
@@ -116,6 +141,8 @@ export function useAuthSession(options = {}) {
     isAuthenticated,
     currentUserRole,
     currentShiftUser,
+    activeOutletId,
+    setActiveOutletId,
     setCurrentUserRole,
     setCurrentShiftUser,
     handleLogin,

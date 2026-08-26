@@ -153,4 +153,26 @@ describe('useAuthSession Hook Unit Tests', () => {
     expect(result.current.showLogoutConfirm).toBe(false);
     expect(result.current.isAuthenticated).toBe(false);
   });
+
+  it('manages activeOutletId state and saves to localStorage', () => {
+    const { result } = renderHook(() => useAuthSession());
+
+    act(() => {
+      result.current.setActiveOutletId('outlet-pusat');
+    });
+    expect(result.current.activeOutletId).toBe('outlet-pusat');
+    expect(localStorage.getItem('kw_activeOutletId')).toBe('outlet-pusat');
+
+    act(() => {
+      result.current.handleLogin('budi', 'outlet-cabang');
+    });
+    expect(result.current.activeOutletId).toBe('outlet-cabang');
+    expect(localStorage.getItem('kw_activeOutletId')).toBe('outlet-cabang');
+
+    act(() => {
+      result.current.clearSessionState();
+    });
+    expect(result.current.activeOutletId).toBe(null);
+    expect(localStorage.getItem('kw_activeOutletId')).toBe(null);
+  });
 });
